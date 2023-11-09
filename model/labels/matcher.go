@@ -27,20 +27,35 @@ const (
 	MatchNotEqual
 	MatchRegexp
 	MatchNotRegexp
+	MatchLess
+	MatchLessOrEqual
+	MatchGreater
+	MatchGreaterOrEqual
 )
 
 var matchTypeToStr = [...]string{
-	MatchEqual:     "=",
-	MatchNotEqual:  "!=",
-	MatchRegexp:    "=~",
-	MatchNotRegexp: "!~",
+	MatchEqual:          "=",
+	MatchNotEqual:       "!=",
+	MatchRegexp:         "=~",
+	MatchNotRegexp:      "!~",
+	MatchLess:           "<",
+	MatchLessOrEqual:    "<=",
+	MatchGreater:        ">",
+	MatchGreaterOrEqual: ">=",
 }
 
 func (m MatchType) String() string {
-	if m < MatchEqual || m > MatchNotRegexp {
+	if m < MatchEqual || m > MatchGreaterOrEqual {
 		panic("unknown match type")
 	}
 	return matchTypeToStr[m]
+}
+
+func (m MatchType) IsLessGreaterTypeMatcher() bool {
+	if m >= MatchLess && m <= MatchGreaterOrEqual {
+		return true
+	}
+	return false
 }
 
 // Matcher models the matching of a label.
@@ -115,8 +130,48 @@ func (m *Matcher) Matches(s string) bool {
 		return m.re.MatchString(s)
 	case MatchNotRegexp:
 		return !m.re.MatchString(s)
+	case MatchLess:
+		return m.tryMatchesNumberElseString(s)
+	case MatchLessOrEqual:
+		return m.tryMatchesNumberElseString(s)
+	case MatchGreater:
+		return m.tryMatchesNumberElseString(s)
+	case MatchGreaterOrEqual:
+		return m.tryMatchesNumberElseString(s)
 	}
 	panic("labels.Matcher.Matches: invalid match type")
+}
+
+func (m *Matcher) tryMatchesNumberElseString(s string) bool {
+	if sNum, err := strconv.ParseFloat(s, 64); err == nil {
+		if vNum, err := strconv.ParseFloat(m.Value, 64); err == nil {
+			switch m.Type {
+			case MatchLess:
+				return sNum < vNum
+			case MatchLessOrEqual:
+				return sNum <= vNum
+			case MatchGreater:
+				return sNum > vNum
+			case MatchGreaterOrEqual:
+				return sNum >= vNum
+			default:
+				panic("labels.Matcher.Matches: invalid code path for greater / less matching")
+			}
+		}
+	}
+
+	switch m.Type {
+	case MatchLess:
+		return s < m.Value
+	case MatchLessOrEqual:
+		return s <= m.Value
+	case MatchGreater:
+		return s > m.Value
+	case MatchGreaterOrEqual:
+		return s >= m.Value
+	default:
+		panic("labels.Matcher.Matches: invalid code path for greater / less matching")
+	}
 }
 
 // Inverse returns a matcher that matches the opposite.
@@ -130,6 +185,14 @@ func (m *Matcher) Inverse() (*Matcher, error) {
 		return NewMatcher(MatchNotRegexp, m.Name, m.Value)
 	case MatchNotRegexp:
 		return NewMatcher(MatchRegexp, m.Name, m.Value)
+	case MatchLess:
+		return NewMatcher(MatchGreaterOrEqual, m.Name, m.Value)
+	case MatchLessOrEqual:
+		return NewMatcher(MatchGreater, m.Name, m.Value)
+	case MatchGreater:
+		return NewMatcher(MatchLessOrEqual, m.Name, m.Value)
+	case MatchGreaterOrEqual:
+		return NewMatcher(MatchLess, m.Name, m.Value)
 	}
 	panic("labels.Matcher.Matches: invalid match type")
 }
