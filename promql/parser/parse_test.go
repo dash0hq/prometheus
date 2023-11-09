@@ -1930,11 +1930,11 @@ var testExpr = []struct {
 		errMsg: "unexpected character inside braces: '*'",
 	},
 	{
-		input: `foo{a>="b"}`,
+		input: `foo{a$="b"}`,
 		fail:  true,
 		// TODO(fabxc): willingly lexing wrong tokens allows for more precise error
 		// messages from the parser - consider if this is an option.
-		errMsg: "unexpected character inside braces: '>'",
+		errMsg: "unexpected character inside braces: '$'",
 	},
 	{
 		input:  "some_metric{a=\"\xff\"}",

@@ -849,7 +849,7 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 			// implicit selection of all metrics (e.g. by a typo).
 			notEmpty := false
 			for _, lm := range n.LabelMatchers {
-				if lm != nil && !lm.Matches("") {
+				if lm != nil && (!lm.Matches("") || lm.Type.IsLessGreaterTypeMatcher()) {
 					notEmpty = true
 					break
 				}
@@ -913,6 +913,15 @@ func (p *parser) newLabelMatcher(label, operator, value Item) *labels.Matcher {
 		matchType = labels.MatchRegexp
 	case NEQ_REGEX:
 		matchType = labels.MatchNotRegexp
+	case LSS:
+		matchType = labels.MatchLess
+	case LTE:
+		matchType = labels.MatchLessOrEqual
+	case GTR:
+		matchType = labels.MatchGreater
+	case GTE:
+		matchType = labels.MatchGreaterOrEqual
+
 	default:
 		// This should never happen, since the error should have been caught
 		// by the generated parser.
