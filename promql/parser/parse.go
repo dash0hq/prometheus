@@ -844,6 +844,15 @@ func (p *parser) newLabelMatcher(label, operator, value Item) *labels.Matcher {
 		matchType = labels.MatchRegexp
 	case NEQ_REGEX:
 		matchType = labels.MatchNotRegexp
+	case LSS:
+		matchType = labels.MatchLess
+	case LTE:
+		matchType = labels.MatchLessOrEqual
+	case GTR:
+		matchType = labels.MatchGreater
+	case GTE:
+		matchType = labels.MatchGreaterOrEqual
+
 	default:
 		// This should never happen, since the error should have been caught
 		// by the generated parser.

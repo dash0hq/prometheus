@@ -26,17 +26,25 @@ const (
 	MatchNotEqual
 	MatchRegexp
 	MatchNotRegexp
+	MatchLess
+	MatchLessOrEqual
+	MatchGreater
+	MatchGreaterOrEqual
 )
 
 var matchTypeToStr = [...]string{
-	MatchEqual:     "=",
-	MatchNotEqual:  "!=",
-	MatchRegexp:    "=~",
-	MatchNotRegexp: "!~",
+	MatchEqual:          "=",
+	MatchNotEqual:       "!=",
+	MatchRegexp:         "=~",
+	MatchNotRegexp:      "!~",
+	MatchLess:           "<",
+	MatchLessOrEqual:    "<=",
+	MatchGreater:        ">",
+	MatchGreaterOrEqual: ">=",
 }
 
 func (m MatchType) String() string {
-	if m < MatchEqual || m > MatchNotRegexp {
+	if m < MatchEqual || m > MatchGreaterOrEqual {
 		panic("unknown match type")
 	}
 	return matchTypeToStr[m]
