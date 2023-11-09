@@ -2116,15 +2116,15 @@ var testExpr = []struct {
 		},
 	},
 	{
-		input: `foo{a>="b"}`,
+		input: `foo{a$="b"}`,
 		fail:  true,
 		// TODO(fabxc): willingly lexing wrong tokens allows for more precise error
 		// messages from the parser - consider if this is an option.
 		errors: ParseErrors{
 			ParseErr{
 				PositionRange: posrange.PositionRange{Start: 5, End: 11},
-				Err:           errors.New("unexpected character inside braces: '>'"),
-				Query:         `foo{a>="b"}`,
+				Err:           errors.New("unexpected character inside braces: '$'"),
+				Query:         `foo{a$="b"}`,
 			},
 		},
 	},
