@@ -938,7 +938,7 @@ maybe_label     : AVG | BOOL | BOTTOMK | BY | COUNT | COUNT_VALUES | GROUP | GRO
 
 unary_op        : ADD | SUB;
 
-match_op        : EQL | NEQ | EQL_REGEX | NEQ_REGEX ;
+match_op        : EQL | NEQ | EQL_REGEX | NEQ_REGEX | LSS | LTE | GTR | GTE ;
 
 /*
  * Literals.
