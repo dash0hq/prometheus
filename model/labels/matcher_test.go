@@ -98,6 +98,16 @@ func TestMatcher(t *testing.T) {
 			value:   "foo-bar",
 			match:   false,
 		},
+		{
+			matcher: mustNewMatcher(t, MatchGreater, "foo"),
+			value:   "",
+			match:   false,
+		},
+		{
+			matcher: mustNewMatcher(t, MatchLess, "foo"),
+			value:   "",
+			match:   true,
+		},
 	}
 
 	for _, test := range tests {
