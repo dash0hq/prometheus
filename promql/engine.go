@@ -964,7 +964,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 				Func:  extractFuncFromPath(path),
 			}
 			evalRange = 0
-			hints.By, hints.Grouping = extractGroupsFromPath(path)
+			hints.By, hints.GroupingFunc, hints.Grouping = extractGroupsFromPath(path)
 			n.UnexpandedSeriesSet = querier.Select(ctx, false, hints, n.LabelMatchers...)
 
 		case *parser.MatrixSelector:
@@ -994,14 +994,18 @@ func extractFuncFromPath(p []parser.Node) string {
 }
 
 // extractGroupsFromPath parses vector outer function and extracts grouping information if by or without was used.
-func extractGroupsFromPath(p []parser.Node) (bool, []string) {
+// NOTE: in contrast to the original Prometheus function, it keeps walking up the tree to find any grouping, and also
+// returns the grouping function such as "sum" or "avg". If it finds a binary function earlier it breaks up.
+func extractGroupsFromPath(p []parser.Node) (bool, string, []string) {
 	if len(p) == 0 {
-		return false, nil
+		return false, "", nil
 	}
 	if n, ok := p[len(p)-1].(*parser.AggregateExpr); ok {
-		return !n.Without, n.Grouping
+		return !n.Without, n.Op.String(), n.Grouping
+	} else if _, ok := p[len(p)-1].(*parser.BinaryExpr); ok {
+		return false, "", nil
 	}
-	return false, nil
+	return extractGroupsFromPath(p[:len(p)-1])
 }
 
 func checkAndExpandSeriesSet(ctx context.Context, expr parser.Expr) (annotations.Annotations, error) {

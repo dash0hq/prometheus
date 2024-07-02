@@ -514,33 +514,39 @@ func TestSelectHintsSetCorrectly(t *testing.T) {
 		}, {
 			query: "sum by (dim1) (foo)", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "sum", By: true, Grouping: []string{"dim1"}},
+				{Start: 5001, End: 10000, Func: "sum", By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum"},
 			},
 		}, {
 			query: "sum without (dim1) (foo)", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "sum", Grouping: []string{"dim1"}},
+				{Start: 5001, End: 10000, Func: "sum", Grouping: []string{"dim1"}, GroupingFunc: "sum"},
 			},
 		}, {
 			query: "sum by (dim1) (avg_over_time(foo[1s]))", start: 10000,
 			expected: []*storage.SelectHints{
+				{Start: 9001, End: 10000, Func: "avg_over_time", Range: 1000, By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum"},
+			},
+		}, {
+			query: "sum by (dim1) (avg_over_time(foo[1s]) / max_over_time(foo[1s]))", start: 10000,
+			expected: []*storage.SelectHints{
 				{Start: 9001, End: 10000, Func: "avg_over_time", Range: 1000},
+				{Start: 9001, End: 10000, Func: "max_over_time", Range: 1000},
 			},
 		}, {
 			query: "sum by (dim1) (max by (dim2) (foo))", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "max", By: true, Grouping: []string{"dim2"}},
+				{Start: 5001, End: 10000, Func: "max", By: true, Grouping: []string{"dim2"}, GroupingFunc: "max"},
 			},
 		}, {
 			query: "(max by (dim1) (foo))[5s:1s]", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 1, End: 10000, Func: "max", By: true, Grouping: []string{"dim1"}, Step: 1000},
+				{Start: 1, End: 10000, Func: "max", By: true, Grouping: []string{"dim1"}, GroupingFunc: "max", Step: 1000},
 			},
 		}, {
 			query: "(sum(http_requests{group=~\"p.*\"})+max(http_requests{group=~\"c.*\"}))[20s:5s]", start: 120000,
 			expected: []*storage.SelectHints{
-				{Start: 95001, End: 120000, Func: "sum", By: true, Step: 5000},
-				{Start: 95001, End: 120000, Func: "max", By: true, Step: 5000},
+				{Start: 95001, End: 120000, Func: "sum", By: true, GroupingFunc: "sum", Step: 5000},
+				{Start: 95001, End: 120000, Func: "max", By: true, GroupingFunc: "max", Step: 5000},
 			},
 		}, {
 			query: "foo @ 50 + bar @ 250 + baz @ 900", start: 100000, end: 500000,

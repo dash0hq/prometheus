@@ -196,9 +196,10 @@ type SelectHints struct {
 	Step int64  // Query step size in milliseconds.
 	Func string // String representation of surrounding function or aggregation.
 
-	Grouping []string // List of label names used in aggregation.
-	By       bool     // Indicate whether it is without or by.
-	Range    int64    // Range vector selector range in milliseconds.
+	Grouping     []string // List of label names used in aggregation.
+	GroupingFunc string   // Function used for the grouping.
+	By           bool     // Indicate whether it is without or by.
+	Range        int64    // Range vector selector range in milliseconds.
 
 	// ShardCount is the total number of shards that series should be split into
 	// at query time. Then, only series in the ShardIndex shard will be returned
