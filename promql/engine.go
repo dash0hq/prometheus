@@ -972,10 +972,18 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 				End:   end,
 				Step:  durationMilliseconds(interval),
 				Range: durationMilliseconds(evalRange),
-				Func:  extractFuncFromPath(path),
 			}
+
 			evalRange = 0
-			hints.By, hints.Grouping = extractGroupsFromPath(path)
+
+			allFuncs := make([]string, 0, len(path))
+			extractFuncFromPath(path, &allFuncs)
+			hints.AllFuncs = allFuncs
+			if len(allFuncs) > 0 {
+				hints.Func = allFuncs[0]
+			}
+
+			hints.By, hints.GroupingFunc, hints.Grouping = extractGroupsFromPath(path)
 			n.UnexpandedSeriesSet = querier.Select(ctx, false, hints, n.LabelMatchers...)
 
 		case *parser.MatrixSelector:
@@ -987,32 +995,40 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 
 // extractFuncFromPath walks up the path and searches for the first instance of
 // a function or aggregation.
-func extractFuncFromPath(p []parser.Node) string {
+// NOTE: in contrast to the original Prometheus function, it keeps walking up the tree to find any function, and collects
+// these in the array.
+func extractFuncFromPath(p []parser.Node, funcs *[]string) {
 	if len(p) == 0 {
-		return ""
+		return
 	}
 	switch n := p[len(p)-1].(type) {
 	case *parser.AggregateExpr:
-		return n.Op.String()
+		*funcs = append(*funcs, n.Op.String())
 	case *parser.Call:
-		return n.Func.Name
-	case *parser.BinaryExpr:
-		// If we hit a binary expression we terminate since we only care about functions
-		// or aggregations over a single metric.
-		return ""
+		*funcs = append(*funcs, n.Func.Name)
 	}
-	return extractFuncFromPath(p[:len(p)-1])
+	extractFuncFromPath(p[:len(p)-1], funcs)
 }
 
 // extractGroupsFromPath parses vector outer function and extracts grouping information if by or without was used.
-func extractGroupsFromPath(p []parser.Node) (bool, []string) {
+// NOTE: in contrast to the original Prometheus function, it keeps walking up the tree to find any grouping, and also
+// returns the grouping function such as "sum" or "avg". If it finds a binary function earlier it breaks up.
+func extractGroupsFromPath(p []parser.Node) (bool, string, []string) {
 	if len(p) == 0 {
-		return false, nil
+		return false, "", nil
 	}
 	if n, ok := p[len(p)-1].(*parser.AggregateExpr); ok {
-		return !n.Without, n.Grouping
+		return !n.Without, n.Op.String(), n.Grouping
+	} else if b, ok := p[len(p)-1].(*parser.BinaryExpr); ok {
+		// For BinaryExpr where one of the sides is a simple scalar (e.g. <metric> * 1000), we continue looking for a
+		// grouping. And otherwise we simply don't know and abort.
+		if b.RHS.Type() == parser.ValueTypeScalar || b.LHS.Type() == parser.ValueTypeScalar {
+			return extractGroupsFromPath(p[:len(p)-1])
+		}
+
+		return false, "", nil
 	}
-	return false, nil
+	return extractGroupsFromPath(p[:len(p)-1])
 }
 
 // checkAndExpandSeriesSet expands expr's UnexpandedSeriesSet into expr's Series.
