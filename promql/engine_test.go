@@ -326,216 +326,216 @@ func TestSelectHintsSetCorrectly(t *testing.T) {
 		{
 			query: "foo", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, AllFuncs: []string{}},
+				{Start: 5000, End: 10000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo @ 15", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 10001, End: 15000, AllFuncs: []string{}},
+				{Start: 10000, End: 15000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo @ 1", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: -3999, End: 1000, AllFuncs: []string{}},
+				{Start: -4000, End: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m]", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: 80001, End: 200000, Range: 120000, AllFuncs: []string{}},
+				{Start: 80000, End: 200000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m] @ 180", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: 60001, End: 180000, Range: 120000, AllFuncs: []string{}},
+				{Start: 60000, End: 180000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m] @ 300", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: 180001, End: 300000, Range: 120000, AllFuncs: []string{}},
+				{Start: 180000, End: 300000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m] @ 60", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: -59999, End: 60000, Range: 120000, AllFuncs: []string{}},
+				{Start: -60000, End: 60000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m] offset 2m", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 60001, End: 180000, Range: 120000, AllFuncs: []string{}},
+				{Start: 60000, End: 180000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m] @ 200 offset 2m", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: -39999, End: 80000, Range: 120000, AllFuncs: []string{}},
+				{Start: -40000, End: 80000, Range: 120000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo[2m:1s]", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 300000, Step: 1000, AllFuncs: []string{}},
+				{Start: 175000, End: 300000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s])", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 175000, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 300)", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 175000, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 200)", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: 75001, End: 200000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 75000, End: 200000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 100)", start: 200000,
 			expected: []*storage.SelectHints{
-				{Start: -24999, End: 100000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: -25000, End: 100000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] offset 10s)", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 165001, End: 290000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 165000, End: 290000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 155001, End: 280000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 155000, End: 280000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			// When the @ is on the vector selector, the enclosing subquery parameters
 			// don't affect the hint ranges.
 			query: "count_over_time((foo @ 200 offset 10s)[2m:1s] offset 10s)", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 185001, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 185000, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			// When the @ is on the vector selector, the enclosing subquery parameters
 			// don't affect the hint ranges.
 			query: "count_over_time((foo @ 200 offset 10s)[2m:1s] @ 100 offset 10s)", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: 185001, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 185000, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time((foo offset 10s)[2m:1s] @ 100 offset 10s)", start: 300000,
 			expected: []*storage.SelectHints{
-				{Start: -44999, End: 80000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: -45000, End: 80000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "foo", start: 10000, end: 20000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 20000, Step: 1000, AllFuncs: []string{}},
+				{Start: 5000, End: 20000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo @ 15", start: 10000, end: 20000,
 			expected: []*storage.SelectHints{
-				{Start: 10001, End: 15000, Step: 1000, AllFuncs: []string{}},
+				{Start: 10000, End: 15000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo @ 1", start: 10000, end: 20000,
 			expected: []*storage.SelectHints{
-				{Start: -3999, End: 1000, Step: 1000, AllFuncs: []string{}},
+				{Start: -4000, End: 1000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "rate(foo[2m] @ 180)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 60001, End: 180000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: 60000, End: 180000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "rate(foo[2m] @ 300)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 180001, End: 300000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: 180000, End: 300000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "rate(foo[2m] @ 60)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: -59999, End: 60000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: -60000, End: 60000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "rate(foo[2m])", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 80001, End: 500000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: 80000, End: 500000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "rate(foo[2m] offset 2m)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 60001, End: 380000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: 60000, End: 380000, Range: 120000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "rate(foo[2m:1s])", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 500000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
+				{Start: 175000, End: 500000, Func: "rate", Step: 1000, AllFuncs: []string{"rate"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s])", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 500000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 175000, End: 500000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] offset 10s)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 165001, End: 490000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 165000, End: 490000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 300)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 175001, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 175000, End: 300000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 200)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 75001, End: 200000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 75000, End: 200000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time(foo[2m:1s] @ 100)", start: 200000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: -24999, End: 100000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: -25000, End: 100000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time((foo offset 10s)[2m:1s] offset 10s)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 155001, End: 480000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 155000, End: 480000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			// When the @ is on the vector selector, the enclosing subquery parameters
 			// don't affect the hint ranges.
 			query: "count_over_time((foo @ 200 offset 10s)[2m:1s] offset 10s)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 185001, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 185000, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			// When the @ is on the vector selector, the enclosing subquery parameters
 			// don't affect the hint ranges.
 			query: "count_over_time((foo @ 200 offset 10s)[2m:1s] @ 100 offset 10s)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 185001, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: 185000, End: 190000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "count_over_time((foo offset 10s)[2m:1s] @ 100 offset 10s)", start: 300000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: -44999, End: 80000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
+				{Start: -45000, End: 80000, Func: "count_over_time", Step: 1000, AllFuncs: []string{"count_over_time"}},
 			},
 		}, {
 			query: "sum by (dim1) (foo)", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "sum", By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"sum"}},
+				{Start: 5000, End: 10000, Func: "sum", By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"sum"}},
 			},
 		}, {
 			query: "sum without (dim1) (foo)", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "sum", Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"sum"}},
+				{Start: 5000, End: 10000, Func: "sum", Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"sum"}},
 			},
 		}, {
 			query: "sum by (dim1) (avg_over_time(foo[1s]))", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 9001, End: 10000, Func: "avg_over_time", Range: 1000, By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"avg_over_time", "sum"}},
+				{Start: 9000, End: 10000, Func: "avg_over_time", Range: 1000, By: true, Grouping: []string{"dim1"}, GroupingFunc: "sum", AllFuncs: []string{"avg_over_time", "sum"}},
 			},
 		}, {
 			query: "sum by (dim1) (avg_over_time(foo[1s]) / max_over_time(foo[1s]))", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 9001, End: 10000, Func: "avg_over_time", Range: 1000, AllFuncs: []string{"avg_over_time", "sum"}},
-				{Start: 9001, End: 10000, Func: "max_over_time", Range: 1000, AllFuncs: []string{"max_over_time", "sum"}},
+				{Start: 9000, End: 10000, Func: "avg_over_time", Range: 1000, AllFuncs: []string{"avg_over_time", "sum"}},
+				{Start: 9000, End: 10000, Func: "max_over_time", Range: 1000, AllFuncs: []string{"max_over_time", "sum"}},
 			},
 		}, {
 			query: "sum by (dim1) (avg_over_time(foo[1s]) / 1000 * 60)", start: 10000,
@@ -550,63 +550,63 @@ func TestSelectHintsSetCorrectly(t *testing.T) {
 		}, {
 			query: "sum by (dim1) (max by (dim2) (foo))", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 5001, End: 10000, Func: "max", By: true, Grouping: []string{"dim2"}, GroupingFunc: "max", AllFuncs: []string{"max", "sum"}},
+				{Start: 5000, End: 10000, Func: "max", By: true, Grouping: []string{"dim2"}, GroupingFunc: "max", AllFuncs: []string{"max", "sum"}},
 			},
 		}, {
 			query: "(max by (dim1) (foo))[5s:1s]", start: 10000,
 			expected: []*storage.SelectHints{
-				{Start: 1, End: 10000, Func: "max", By: true, Grouping: []string{"dim1"}, GroupingFunc: "max", Step: 1000, AllFuncs: []string{"max"}},
+				{Start: 0, End: 10000, Func: "max", By: true, Grouping: []string{"dim1"}, GroupingFunc: "max", Step: 1000, AllFuncs: []string{"max"}},
 			},
 		}, {
 			query: "(sum(http_requests{group=~\"p.*\"})+max(http_requests{group=~\"c.*\"}))[20s:5s]", start: 120000,
 			expected: []*storage.SelectHints{
-				{Start: 95001, End: 120000, Func: "sum", By: true, GroupingFunc: "sum", Step: 5000, AllFuncs: []string{"sum"}},
-				{Start: 95001, End: 120000, Func: "max", By: true, GroupingFunc: "max", Step: 5000, AllFuncs: []string{"max"}},
+				{Start: 95000, End: 120000, Func: "sum", By: true, GroupingFunc: "sum", Step: 5000, AllFuncs: []string{"sum"}},
+				{Start: 95000, End: 120000, Func: "max", By: true, GroupingFunc: "max", Step: 5000, AllFuncs: []string{"max"}},
 			},
 		}, {
 			query: "foo @ 50 + bar @ 250 + baz @ 900", start: 100000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 45001, End: 50000, Step: 1000, AllFuncs: []string{}},
-				{Start: 245001, End: 250000, Step: 1000, AllFuncs: []string{}},
-				{Start: 895001, End: 900000, Step: 1000, AllFuncs: []string{}},
+				{Start: 45000, End: 50000, Step: 1000, AllFuncs: []string{}},
+				{Start: 245000, End: 250000, Step: 1000, AllFuncs: []string{}},
+				{Start: 895000, End: 900000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "foo @ 50 + bar + baz @ 900", start: 100000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 45001, End: 50000, Step: 1000, AllFuncs: []string{}},
-				{Start: 95001, End: 500000, Step: 1000, AllFuncs: []string{}},
-				{Start: 895001, End: 900000, Step: 1000, AllFuncs: []string{}},
+				{Start: 45000, End: 50000, Step: 1000, AllFuncs: []string{}},
+				{Start: 95000, End: 500000, Step: 1000, AllFuncs: []string{}},
+				{Start: 895000, End: 900000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "rate(foo[2s] @ 50) + bar @ 250 + baz @ 900", start: 100000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 48001, End: 50000, Step: 1000, Func: "rate", Range: 2000, AllFuncs: []string{"rate"}},
-				{Start: 245001, End: 250000, Step: 1000, AllFuncs: []string{}},
-				{Start: 895001, End: 900000, Step: 1000, AllFuncs: []string{}},
+				{Start: 48000, End: 50000, Step: 1000, Func: "rate", Range: 2000, AllFuncs: []string{"rate"}},
+				{Start: 245000, End: 250000, Step: 1000, AllFuncs: []string{}},
+				{Start: 895000, End: 900000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "rate(foo[2s:1s] @ 50) + bar + baz", start: 100000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 43001, End: 50000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
-				{Start: 95001, End: 500000, Step: 1000, AllFuncs: []string{}},
-				{Start: 95001, End: 500000, Step: 1000, AllFuncs: []string{}},
+				{Start: 43000, End: 50000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
+				{Start: 95000, End: 500000, Step: 1000, AllFuncs: []string{}},
+				{Start: 95000, End: 500000, Step: 1000, AllFuncs: []string{}},
 			},
 		}, {
 			query: "rate(foo[2s:1s] @ 50) + bar + rate(baz[2m:1s] @ 900 offset 2m) ", start: 100000, end: 500000,
 			expected: []*storage.SelectHints{
-				{Start: 43001, End: 50000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
-				{Start: 95001, End: 500000, Step: 1000, AllFuncs: []string{}},
-				{Start: 655001, End: 780000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
+				{Start: 43000, End: 50000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
+				{Start: 95000, End: 500000, Step: 1000, AllFuncs: []string{}},
+				{Start: 655000, End: 780000, Step: 1000, Func: "rate", AllFuncs: []string{"rate"}},
 			},
 		}, { // Hints are based on the inner most subquery timestamp.
 			query: `sum_over_time(sum_over_time(metric{job="1"}[100s])[100s:25s] @ 50)[3s:1s] @ 3000`, start: 100000,
 			expected: []*storage.SelectHints{
-				{Start: -149999, End: 50000, Range: 100000, Func: "sum_over_time", Step: 25000, AllFuncs: []string{"sum_over_time", "sum_over_time"}},
+				{Start: -150000, End: 50000, Range: 100000, Func: "sum_over_time", Step: 25000, AllFuncs: []string{"sum_over_time", "sum_over_time"}},
 			},
 		}, { // Hints are based on the inner most subquery timestamp.
 			query: `sum_over_time(sum_over_time(metric{job="1"}[100s])[100s:25s] @ 3000)[3s:1s] @ 50`,
 			expected: []*storage.SelectHints{
-				{Start: 2800001, End: 3000000, Range: 100000, Func: "sum_over_time", Step: 25000, AllFuncs: []string{"sum_over_time", "sum_over_time"}},
+				{Start: 2800000, End: 3000000, Range: 100000, Func: "sum_over_time", Step: 25000, AllFuncs: []string{"sum_over_time", "sum_over_time"}},
 			},
 		},
 	} {
@@ -956,20 +956,22 @@ load 10s
 			},
 		},
 		{
-			Query:        "max_over_time(metricWith1SampleEvery10Seconds[60s])[20s:5s]",
+			Query:        "max_over_time(metricWith1SampleEvery10Seconds[59s])[20s:5s]",
 			Start:        time.Unix(201, 0),
 			PeakSamples:  10,
-			TotalSamples: 24, // (1 sample / 10 seconds * 60 seconds) * 4
+			TotalSamples: 24, // (1 sample / 10 seconds * 60 seconds) * 20/5 (using 59s so we always return 6 samples
+			// as if we run a query on 00 looking back 60 seconds we will return 7 samples;
+			// see next test).
 			TotalSamplesPerStep: stats.TotalSamplesPerStep{
 				201000: 24,
 			},
 		},
 		{
-			Query:        "max_over_time(metricWith1SampleEvery10Seconds[61s])[20s:5s]",
+			Query:        "max_over_time(metricWith1SampleEvery10Seconds[60s])[20s:5s]",
 			Start:        time.Unix(201, 0),
 			PeakSamples:  11,
 			TotalSamples: 26, // (1 sample / 10 seconds * 60 seconds) * 4 + 2 as
-			// max_over_time(metricWith1SampleEvery10Seconds[61s]) @ 190 and 200 will return 7 samples.
+			// max_over_time(metricWith1SampleEvery10Seconds[60s]) @ 190 and 200 will return 7 samples.
 			TotalSamplesPerStep: stats.TotalSamplesPerStep{
 				201000: 26,
 			},
@@ -978,9 +980,9 @@ load 10s
 			Query:        "max_over_time(metricWith1HistogramEvery10Seconds[60s])[20s:5s]",
 			Start:        time.Unix(201, 0),
 			PeakSamples:  78,
-			TotalSamples: 312, // (1 histogram (size 13) / 10 seconds * 60 seconds) * 4
+			TotalSamples: 338, // (1 histogram (size 13) / 10 seconds * 60 seconds) * 4
 			TotalSamplesPerStep: stats.TotalSamplesPerStep{
-				201000: 312,
+				201000: 338,
 			},
 		},
 		{
@@ -1473,7 +1475,7 @@ load 10s
 			//                     + 10 (buffer of a series per evaluation)
 			//                     + 6 (result from 2 series at 3 eval times).
 			Query:      `rate(bigmetric[10s:1s]) + rate(bigmetric[10s:1s] @ 30)`,
-			MaxSamples: 56,
+			MaxSamples: 57,
 			Start:      time.Unix(10, 0),
 			End:        time.Unix(20, 0),
 			Interval:   5 * time.Second,
@@ -1597,11 +1599,11 @@ load 1ms
 			start: 10,
 			result: promql.Matrix{
 				promql.Series{
-					Floats: []promql.FPoint{{F: 29, T: 290000}, {F: 30, T: 300000}},
+					Floats: []promql.FPoint{{F: 28, T: 280000}, {F: 29, T: 290000}, {F: 30, T: 300000}},
 					Metric: lbls1,
 				},
 				promql.Series{
-					Floats: []promql.FPoint{{F: 58, T: 290000}, {F: 60, T: 300000}},
+					Floats: []promql.FPoint{{F: 56, T: 280000}, {F: 58, T: 290000}, {F: 60, T: 300000}},
 					Metric: lbls2,
 				},
 			},
@@ -1610,7 +1612,7 @@ load 1ms
 			start: 100,
 			result: promql.Matrix{
 				promql.Series{
-					Floats: []promql.FPoint{{F: 2, T: -1000}, {F: 1, T: 0}},
+					Floats: []promql.FPoint{{F: 3, T: -2000}, {F: 2, T: -1000}, {F: 1, T: 0}},
 					Metric: lblsneg,
 				},
 			},
@@ -1619,7 +1621,7 @@ load 1ms
 			start: 100,
 			result: promql.Matrix{
 				promql.Series{
-					Floats: []promql.FPoint{{F: 503, T: -502000}, {F: 502, T: -501000}, {F: 501, T: -500000}},
+					Floats: []promql.FPoint{{F: 504, T: -503000}, {F: 503, T: -502000}, {F: 502, T: -501000}, {F: 501, T: -500000}},
 					Metric: lblsneg,
 				},
 			},
@@ -1628,7 +1630,7 @@ load 1ms
 			start: 100,
 			result: promql.Matrix{
 				promql.Series{
-					Floats: []promql.FPoint{{F: 2343, T: 2343}, {F: 2344, T: 2344}, {F: 2345, T: 2345}},
+					Floats: []promql.FPoint{{F: 2342, T: 2342}, {F: 2343, T: 2343}, {F: 2344, T: 2344}, {F: 2345, T: 2345}},
 					Metric: lblsms,
 				},
 			},
@@ -3235,7 +3237,7 @@ func TestInstantQueryWithRangeVectorSelector(t *testing.T) {
 		ts       time.Time
 	}{
 		"matches series with points in range": {
-			expr: "some_metric[2m]",
+			expr: "some_metric[1m]",
 			ts:   baseT.Add(2 * time.Minute),
 			expected: promql.Matrix{
 				{
@@ -3278,6 +3280,7 @@ func TestInstantQueryWithRangeVectorSelector(t *testing.T) {
 				{
 					Metric: labels.FromStrings("__name__", "some_metric_with_stale_marker"),
 					Floats: []promql.FPoint{
+						{T: timestamp.FromTime(baseT), F: 0},
 						{T: timestamp.FromTime(baseT.Add(time.Minute)), F: 1},
 						{T: timestamp.FromTime(baseT.Add(3 * time.Minute)), F: 3},
 					},
@@ -3321,43 +3324,43 @@ metric 0 1 2
 	}{
 		{
 			name:          "default lookback delta",
-			ts:            lastDatapointTs.Add(defaultLookbackDelta - time.Millisecond),
+			ts:            lastDatapointTs.Add(defaultLookbackDelta),
 			expectSamples: true,
 		},
 		{
 			name:          "outside default lookback delta",
-			ts:            lastDatapointTs.Add(defaultLookbackDelta),
+			ts:            lastDatapointTs.Add(defaultLookbackDelta + time.Millisecond),
 			expectSamples: false,
 		},
 		{
 			name:           "custom engine lookback delta",
-			ts:             lastDatapointTs.Add(10*time.Minute - time.Millisecond),
+			ts:             lastDatapointTs.Add(10 * time.Minute),
 			engineLookback: 10 * time.Minute,
 			expectSamples:  true,
 		},
 		{
 			name:           "outside custom engine lookback delta",
-			ts:             lastDatapointTs.Add(10 * time.Minute),
+			ts:             lastDatapointTs.Add(10*time.Minute + time.Millisecond),
 			engineLookback: 10 * time.Minute,
 			expectSamples:  false,
 		},
 		{
 			name:           "custom query lookback delta",
-			ts:             lastDatapointTs.Add(20*time.Minute - time.Millisecond),
+			ts:             lastDatapointTs.Add(20 * time.Minute),
 			engineLookback: 10 * time.Minute,
 			queryLookback:  20 * time.Minute,
 			expectSamples:  true,
 		},
 		{
 			name:           "outside custom query lookback delta",
-			ts:             lastDatapointTs.Add(20 * time.Minute),
+			ts:             lastDatapointTs.Add(20*time.Minute + time.Millisecond),
 			engineLookback: 10 * time.Minute,
 			queryLookback:  20 * time.Minute,
 			expectSamples:  false,
 		},
 		{
 			name:           "negative custom query lookback delta",
-			ts:             lastDatapointTs.Add(20*time.Minute - time.Millisecond),
+			ts:             lastDatapointTs.Add(20 * time.Minute),
 			engineLookback: -10 * time.Minute,
 			queryLookback:  20 * time.Minute,
 			expectSamples:  true,
