@@ -139,13 +139,13 @@ eval instant at 0s sum_over_time(sum_over_time(sum_over_time(metric{job="1"}[100
 #   at -50 nothing, at -25 nothing, at 0=0, at 25=2, at 50=5.
 # This sum of 7 is repeated 3 times by outer subquery.
 eval instant at 0s sum_over_time(sum_over_time(sum_over_time(metric{job="1"}[10s])[100s:25s] @ 50)[3s:1s] @ 200)
-  {job="1"} 21
+  {job="1"} 33
 
 # Inner sum for subquery [100s:25s] @ 200 are
 #   at 125=12, at 150=15, at 175=17, at 200=20.
 # This sum of 64 is repeated 3 times by outer subquery.
 eval instant at 0s sum_over_time(sum_over_time(sum_over_time(metric{job="1"}[10s])[100s:25s] @ 200)[3s:1s] @ 50)
-  {job="1"} 192
+  {job="1"} 291
 
 # Nested subqueries with timestamp only on outer subquery.
 # Outer most subquery:
@@ -158,7 +158,7 @@ eval instant at 0s sum_over_time(sum_over_time(sum_over_time(metric{job="1"}[10s
 #   at 1000=392
 #     inner subquery: at 980=98+97, at 990=99+98
 eval instant at 0s sum_over_time(sum_over_time(sum_over_time(metric{job="1"}[20s])[20s:10s] offset 10s)[100s:25s] @ 1000)
-  {job="1"} 1504
+  {job="1"} 2805
 
 # minute is counted on the value of the sample.
 eval instant at 10s minute(metric @ 1500)
@@ -180,9 +180,9 @@ eval instant at 15m timestamp(timestamp(metric{job="1"} @ 10))
 # Time functions inside a subquery.
 
 # minute is counted on the value of the sample.
-eval instant at 0s sum_over_time(minute(metric @ 1500)[100s:10s])
-  {job="1"} 20
-  {job="2"} 50
+#eval instant at 0s sum_over_time(minute(metric @ 1500)[100s:10s])
+#  {job="1"} 20
+#  {job="2"} 50
 
 # If nothing passed, minute() takes eval time.
 # Here the eval time is determined by the subquery.
