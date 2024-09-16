@@ -591,7 +591,7 @@ eval instant at 50m histogram_quantile(0.99, nonmonotonic_bucket)
     {} 979.75
 
 # Buckets with different representations of the same upper bound.
-eval instant at 50m histogram_quantile(0.5, rate(mixed_bucket[10m]))
+eval instant at 50m histogram_quantile(0.5, rate(mixed_bucket[5m]))
 	{instance="ins1", job="job1"} 0.15
 	{instance="ins2", job="job1"} NaN
 
@@ -603,7 +603,7 @@ eval instant at 50m histogram_quantile(0.75, rate(mixed_bucket[10m]))
 	{instance="ins1", job="job1"} 0.2
 	{instance="ins2", job="job1"} NaN
 
-eval instant at 50m histogram_quantile(1, rate(mixed_bucket[10m]))
+eval instant at 50m histogram_quantile(1, rate(mixed_bucket[5m]))
 	{instance="ins1", job="job1"} 0.2
 	{instance="ins2", job="job1"} NaN
 
@@ -612,7 +612,7 @@ load_with_nhcb 5m
 	empty_bucket{le="0.2", job="job1", instance="ins1"}    0x10
 	empty_bucket{le="+Inf", job="job1", instance="ins1"}   0x10
 
-eval instant at 50m histogram_quantile(0.2, rate(empty_bucket[10m]))
+eval instant at 50m histogram_quantile(0.2, rate(empty_bucket[5m]))
 	{instance="ins1", job="job1"} NaN
 
 # Load a duplicate histogram with a different name to test failure scenario on multiple histograms with the same label set.
