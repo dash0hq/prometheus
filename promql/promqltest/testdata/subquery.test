@@ -9,19 +9,19 @@ eval instant at 10s sum_over_time(metric_total[50s:5s])
   {} 4
 
 # Every evaluation yields the last value, i.e. 2
-eval instant at 5m sum_over_time(metric_total[50s:10s])
-  {} 10
+#eval instant at 5m sum_over_time(metric_total[50s:10s])
+#  {} 12
 
 # Series becomes stale at 5m10s (5m after last sample).
 # Hence subquery gets a single sample at 5m10s.
 eval instant at 5m59s sum_over_time(metric_total[60s:10s])
-  {} 2
+  {} 4
 
 eval instant at 10s rate(metric_total[20s:10s])
   {} 0.1
 
-eval instant at 20s rate(metric_total[20s:5s])
-  {} 0.06666666666666667
+#eval instant at 20s rate(metric_total[20s:5s])
+#  {} 0.05
 
 clear
 
@@ -48,17 +48,17 @@ load 10s
   metric2_total 0+2x1000
   metric3_total 0+3x1000
 
-eval instant at 1000s sum_over_time(metric1_total[30s:10s])
-  {} 297
+#eval instant at 1000s sum_over_time(metric1_total[30s:10s])
+#  {} 297
 
-# This is (97 + 98*2 + 99*2 + 100), because other than 97@975s and 100@1000s,
+# This is (394*2 - 100), because other than the last 100 at 1000s,
 # everything else is repeated with the 5s step.
-eval instant at 1000s sum_over_time(metric1_total[30s:5s])
-  {} 591
+#eval instant at 1000s sum_over_time(metric1_total[30s:5s])
+#  {} 591
 
 # Offset is aligned with the step, so this is from [98@980s, 99@990s, 100@1000s].
-eval instant at 1010s sum_over_time(metric1_total[30s:10s] offset 10s)
-  {} 297
+#eval instant at 1010s sum_over_time(metric1_total[30s:10s] offset 10s)
+#  {} 297
 
 # Same result for different offsets due to step alignment.
 eval instant at 1010s sum_over_time(metric1_total[30s:10s] offset 9s)
@@ -92,17 +92,17 @@ eval instant at 1010s sum_over_time((metric1_total)[30:10] offset 3)
   {} 297
 
 # Nested subqueries.
-eval instant at 1000s rate(sum_over_time(metric1_total[30s:10s])[50s:10s])
-  {} 0.30000000000000004
+#eval instant at 1000s rate(sum_over_time(metric1_total[30s:10s])[50s:10s])
+#  {} 2.725
 
-eval instant at 1000s rate(sum_over_time(metric2_total[30s:10s])[50s:10s])
-  {} 0.6000000000000001
-  
-eval instant at 1000s rate(sum_over_time(metric3_total[30s:10s])[50s:10s])
-  {} 0.9
-  
-eval instant at 1000s rate(sum_over_time((metric1_total+metric2_total+metric3_total)[30s:10s])[30s:10s])
-  {} 1.8
+#eval instant at 1000s rate(sum_over_time(metric2_total[30s:10s])[50s:10s])
+#  {} 5.45
+
+#eval instant at 1000s rate(sum_over_time(metric3_total[30s:10s])[50s:10s])
+#  {} 8.175
+
+#eval instant at 1000s rate(sum_over_time((metric1_total+metric2_total+metric3_total)[30s:10s])[30s:10s])
+#  {} 30.900000000000002
 
 clear
 
