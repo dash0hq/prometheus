@@ -1008,7 +1008,7 @@ func getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorSelector, path
 		// Reduce the start by one fewer ms than the lookback delta
 		// because wo want to exclude samples that are precisely the
 		// lookback delta before the eval time.
-		start -= durationMilliseconds(s.LookbackDelta) - 1
+		start -= durationMilliseconds(s.LookbackDelta)
 		if n.Smoothed {
 			end += durationMilliseconds(s.LookbackDelta)
 		}
@@ -1023,12 +1023,14 @@ func getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorSelector, path
 		// millisecond) to exclude samples exactly at the lower boundary.
 		switch {
 		case n.Anchored:
-			start -= durationMilliseconds(s.LookbackDelta+evalRange) - 1
+			start -= durationMilliseconds(s.LookbackDelta + evalRange)
 		case n.Smoothed:
-			start -= durationMilliseconds(s.LookbackDelta+evalRange) - 1
+			start -= durationMilliseconds(s.LookbackDelta + evalRange)
 			end += durationMilliseconds(s.LookbackDelta)
 		default:
-			start -= durationMilliseconds(evalRange) - 1
+			// For all matrix queries we want to ensure that we have (end-start) + range selected
+			// this way we have `range` data before the start time
+			start -= durationMilliseconds(evalRange)
 		}
 	}
 
@@ -2793,7 +2795,7 @@ func (ev *evaluator) rangeEvalTimestampFunctionOverVectorSelector(ctx context.Co
 	seriesIterators := make([]*storage.MemoizedSeriesIterator, len(vs.Series))
 	for i, s := range vs.Series {
 		it := s.Iterator(nil)
-		seriesIterators[i] = storage.NewMemoizedIterator(it, durationMilliseconds(ev.lookbackDelta)-1)
+		seriesIterators[i] = storage.NewMemoizedIterator(it, durationMilliseconds(ev.lookbackDelta))
 	}
 
 	return ev.rangeEval(ctx, nil, func(_ []Vector, _ Matrix, _ [][]EvalSeriesHelper, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
@@ -2882,7 +2884,7 @@ func (ev *evaluator) vectorSelectorSingle(it *storage.MemoizedSeriesIterator, of
 	if valueType == chunkenc.ValNone || t > refTime {
 		var ok bool
 		st, t, v, h, ok = it.PeekPrev()
-		if !ok || t <= refTime-durationMilliseconds(ev.lookbackDelta) {
+		if !ok || t < refTime-durationMilliseconds(ev.lookbackDelta) {
 			return 0, 0, 0, nil, false
 		}
 	}
@@ -3049,20 +3051,20 @@ func (ev *evaluator) matrixIterSlice(
 	mintFloats, mintHistograms := mint, mint
 
 	// First floats...
-	if len(floats) > 0 && floats[len(floats)-1].T > mint {
+	if len(floats) > 0 && floats[len(floats)-1].T >= mint {
 		// There is an overlap between previous and current ranges, retain common
 		// points. In most such cases:
 		//   (a) the overlap is significantly larger than the eval step; and/or
 		//   (b) the number of samples is relatively small.
 		// so a linear search will be as fast as a binary search.
 		var drop int
-		for drop = 0; floats[drop].T <= mint; drop++ {
+		for drop = 0; floats[drop].T < mint; drop++ {
 		}
 		ev.currentSamples -= drop
 		copy(floats, floats[drop:])
 		floats = floats[:len(floats)-drop]
 		// Only append points with timestamps after the last timestamp we have.
-		mintFloats = floats[len(floats)-1].T
+		mintFloats = floats[len(floats)-1].T + 1
 
 		if startTimestamps != nil {
 			// Truncate startTimestamps at the same drop point.
@@ -3082,14 +3084,14 @@ func (ev *evaluator) matrixIterSlice(
 	}
 
 	// ...then the same for histograms. TODO(beorn7): Use generics?
-	if len(histograms) > 0 && histograms[len(histograms)-1].T > mint {
+	if len(histograms) > 0 && histograms[len(histograms)-1].T >= mint {
 		// There is an overlap between previous and current ranges, retain common
 		// points. In most such cases:
 		//   (a) the overlap is significantly larger than the eval step; and/or
 		//   (b) the number of samples is relatively small.
 		// so a linear search will be as fast as a binary search.
 		var drop int
-		for drop = 0; histograms[drop].T <= mint; drop++ {
+		for drop = 0; histograms[drop].T < mint; drop++ {
 		}
 		droppedSize := totalHPointSize(histograms[:drop])
 		// Rotate the buffer around the drop index so that points before mint can be
@@ -3101,7 +3103,7 @@ func (ev *evaluator) matrixIterSlice(
 		histograms = histograms[:len(histograms)-drop]
 		ev.currentSamples -= droppedSize
 		// Only append points with timestamps after the last timestamp we have.
-		mintHistograms = histograms[len(histograms)-1].T
+		mintHistograms = histograms[len(histograms)-1].T + 1
 
 		if startTimestamps != nil {
 			// Truncate startTimestamps at the same drop point.
@@ -3141,7 +3143,7 @@ loop:
 		case chunkenc.ValFloatHistogram, chunkenc.ValHistogram:
 			t := buf.AtT()
 			// Values in the buffer are guaranteed to be smaller than maxt.
-			if t > mintHistograms {
+			if t >= mintHistograms {
 				if histograms == nil {
 					histograms = getMatrixSelectorHPoints()
 				}
@@ -3171,7 +3173,7 @@ loop:
 				continue loop
 			}
 			// Values in the buffer are guaranteed to be smaller than maxt.
-			if t > mintFloats {
+			if t >= mintFloats {
 				ev.currentSamples++
 				if ev.currentSamples > ev.maxSamples {
 					ev.error(ErrTooManySamples(env))
