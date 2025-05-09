@@ -1030,7 +1030,7 @@ func extractGroupsFromPath(p []parser.Node) (int, bool, string, []string) {
 }
 
 // extractTransformedLabelsFromFuncs extracts additional grouping hints from the path starting at the most inner
-// aggregation to allow our synthetic metrics to correctly materialize the required labels
+// aggregation to allow our synthetic metrics to correctly materialize the required labels.
 func extractTransformedLabelsFromFuncs(p []parser.Node) map[string][]string {
 	var (
 		destinations []string
