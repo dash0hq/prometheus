@@ -1056,8 +1056,8 @@ func extractTransformedLabelsFromFuncs(p []parser.Node) map[string][]string {
 				}
 
 				var src string
-				if e, ok := c.Args[3].(*parser.StepInvariantExpr); ok {
-					if lit, ok := e.Expr.(*parser.StringLiteral); ok {
+				if s, ok := c.Args[3].(*parser.StepInvariantExpr); ok {
+					if lit, ok := s.Expr.(*parser.StringLiteral); ok {
 						src = lit.Val
 					}
 				}
@@ -1075,7 +1075,21 @@ func extractTransformedLabelsFromFuncs(p []parser.Node) map[string][]string {
 					mapping = make(map[string][]string, len(c.Args)-3)
 				}
 
-				//TODO loop
+				for _, expr := range c.Args[3:] {
+					if s, ok := expr.(*parser.StepInvariantExpr); ok {
+						if lit, ok := s.Expr.(*parser.StringLiteral); ok && len(lit.Val) > 0 {
+							src := lit.Val
+							if len(dst) > 0 && len(src) > 0 && !slices.Contains(destinations, src) {
+								if _, exists := mapping[src]; !exists {
+									mapping[src] = []string{dst}
+								} else {
+									mapping[src] = append(mapping[src], dst)
+								}
+							}
+							destinations = append(destinations, dst)
+						}
+					}
+				}
 			}
 		}
 	}
