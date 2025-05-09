@@ -977,7 +977,12 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 				hints.Func = allFuncs[0]
 			}
 
-			hints.By, hints.GroupingFunc, hints.Grouping = extractGroupsFromPath(path)
+			var aggIdx int
+			aggIdx, hints.By, hints.GroupingFunc, hints.Grouping = extractGroupsFromPath(path)
+			if aggIdx >= 0 {
+				hints.Grouping = append(hints.Grouping, extractImplicitGroupHintsFromFuncs(path[aggIdx:])...)
+			}
+
 			n.UnexpandedSeriesSet = querier.Select(ctx, false, hints, n.LabelMatchers...)
 
 		case *parser.MatrixSelector:
@@ -1007,22 +1012,38 @@ func extractFuncFromPath(p []parser.Node, funcs *[]string) {
 // extractGroupsFromPath parses vector outer function and extracts grouping information if by or without was used.
 // NOTE: in contrast to the original Prometheus function, it keeps walking up the tree to find any grouping, and also
 // returns the grouping function such as "sum" or "avg". If it finds a binary function earlier it breaks up.
-func extractGroupsFromPath(p []parser.Node) (bool, string, []string) {
+func extractGroupsFromPath(p []parser.Node) (int, bool, string, []string) {
 	if len(p) == 0 {
-		return false, "", nil
+		return -1, false, "", nil
 	}
 	if n, ok := p[len(p)-1].(*parser.AggregateExpr); ok {
-		return !n.Without, n.Op.String(), n.Grouping
+		return len(p) - 1, !n.Without, n.Op.String(), n.Grouping
 	} else if b, ok := p[len(p)-1].(*parser.BinaryExpr); ok {
 		// For BinaryExpr where one of the sides is a simple scalar (e.g. <metric> * 1000), we continue looking for a
 		// grouping. And otherwise we simply don't know and abort.
 		if b.RHS.Type() == parser.ValueTypeScalar || b.LHS.Type() == parser.ValueTypeScalar {
 			return extractGroupsFromPath(p[:len(p)-1])
 		}
-
-		return false, "", nil
+		return -1, false, "", nil
 	}
 	return extractGroupsFromPath(p[:len(p)-1])
+}
+
+// extractImplicitGroupHintsFromFuncs extracts additional grouping hints from the path starting at the most inner
+// aggregation to allow our synthetic metrics to correctly materialize the required labels
+func extractImplicitGroupHintsFromFuncs(p []parser.Node) (dsts []string) {
+	for _, n := range p {
+		if c, ok := n.(*parser.Call); ok {
+			if c.Func.Name == "label_replace" || c.Func.Name == "label_join" {
+				if len(c.Args) > 1 {
+					if lit, ok := c.Args[1].(*parser.StringLiteral); ok {
+						dsts = append(dsts, lit.Val)
+					}
+				}
+			}
+		}
+	}
+	return
 }
 
 // checkAndExpandSeriesSet expands expr's UnexpandedSeriesSet into expr's Series.
