@@ -980,7 +980,7 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 			var aggIdx int
 			aggIdx, hints.By, hints.GroupingFunc, hints.Grouping = extractGroupsFromPath(path)
 			if aggIdx >= 0 {
-				hints.Grouping = append(hints.Grouping, extractImplicitGroupHintsFromFuncs(path[aggIdx:])...)
+				hints.TransformedLabelsMappingForGrouping = extractTransformedLabelsFromFuncs(path[aggIdx:])
 			}
 
 			n.UnexpandedSeriesSet = querier.Select(ctx, false, hints, n.LabelMatchers...)
@@ -1029,21 +1029,58 @@ func extractGroupsFromPath(p []parser.Node) (int, bool, string, []string) {
 	return extractGroupsFromPath(p[:len(p)-1])
 }
 
-// extractImplicitGroupHintsFromFuncs extracts additional grouping hints from the path starting at the most inner
+// extractTransformedLabelsFromFuncs extracts additional grouping hints from the path starting at the most inner
 // aggregation to allow our synthetic metrics to correctly materialize the required labels
-func extractImplicitGroupHintsFromFuncs(p []parser.Node) (dsts []string) {
-	for _, n := range p {
-		if c, ok := n.(*parser.Call); ok {
-			if c.Func.Name == "label_replace" || c.Func.Name == "label_join" {
-				if len(c.Args) > 1 {
-					if lit, ok := c.Args[1].(*parser.StringLiteral); ok {
-						dsts = append(dsts, lit.Val)
+func extractTransformedLabelsFromFuncs(p []parser.Node) map[string][]string {
+	var (
+		destinations []string
+		mapping      map[string][]string
+	)
+
+	for i := len(p) - 1; i >= 0; i-- {
+		if c, ok := p[i].(*parser.Call); ok {
+			if c.Func.Name != "label_replace" && c.Func.Name != "label_join" {
+				continue
+			}
+
+			var dst string
+			if e, ok := c.Args[1].(*parser.StepInvariantExpr); ok {
+				if lit, ok := e.Expr.(*parser.StringLiteral); ok {
+					dst = lit.Val
+				}
+			}
+
+			if c.Func.Name == "label_replace" && len(c.Args) > 4 {
+				if mapping == nil {
+					mapping = make(map[string][]string, 1)
+				}
+
+				var src string
+				if e, ok := c.Args[3].(*parser.StepInvariantExpr); ok {
+					if lit, ok := e.Expr.(*parser.StringLiteral); ok {
+						src = lit.Val
 					}
 				}
+
+				if len(dst) > 0 && len(src) > 0 && !slices.Contains(destinations, src) {
+					if _, exists := mapping[src]; !exists {
+						mapping[src] = []string{dst}
+					} else {
+						mapping[src] = append(mapping[src], dst)
+					}
+				}
+				destinations = append(destinations, dst)
+			} else if c.Func.Name == "label_join" && len(c.Args) > 3 {
+				if mapping == nil {
+					mapping = make(map[string][]string, len(c.Args)-3)
+				}
+
+				//TODO loop
 			}
 		}
 	}
-	return
+
+	return mapping
 }
 
 // checkAndExpandSeriesSet expands expr's UnexpandedSeriesSet into expr's Series.

@@ -608,6 +608,47 @@ func TestSelectHintsSetCorrectly(t *testing.T) {
 			expected: []*storage.SelectHints{
 				{Start: 2800000, End: 3000000, Range: 100000, Func: "sum_over_time", Step: 25000, AllFuncs: []string{"sum_over_time", "sum_over_time"}},
 			},
+		}, {
+			query: `label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*")`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", AllFuncs: []string{"label_replace"}, TransformedLabelsMappingForGrouping: nil},
+			},
+		},
+		{
+			query: `sum(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo"}}},
+			},
+		},
+		{
+			query: `sum(label_replace(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*"), "foo", "$1", "service", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo"}}},
+			},
+		},
+		{
+			query: `sum(label_replace(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*"), "bar", "$1", "foo", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo"}}},
+			},
+		},
+		{
+			query: `sum(label_replace(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*"), "bar", "$1", "service", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo", "bar"}}},
+			},
+		},
+		{
+			query: `sum(label_replace(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*"), "bar", "$1", "version", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo"}, "version": {"bar"}}},
+			},
+		},
+		{
+			query: `sum(label_replace(label_replace(label_replace(up{job="api-server",service="a:c"}, "foo", "$1", "service", "(.*):.*"), "bar", "$1", "foo", "(.*):.*"), "out", "$1", "bar", "(.*):.*")) by (service)`, start: 100000,
+			expected: []*storage.SelectHints{
+				{Start: 95000, End: 100000, Func: "label_replace", By: true, Grouping: []string{"service"}, GroupingFunc: "sum", AllFuncs: []string{"label_replace", "label_replace", "label_replace", "sum"}, TransformedLabelsMappingForGrouping: map[string][]string{"service": {"foo"}}},
+			},
 		},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
