@@ -31,5 +31,7 @@ npm_licenses.tar.bz2
 /**/node_modules
 .pnpm-store
 
+.claude/*local*
+
 # Ignore parser debug
 y.output
