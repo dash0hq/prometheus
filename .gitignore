@@ -30,5 +30,7 @@ npm_licenses.tar.bz2
 
 /**/node_modules
 
+.claude/*local*
+
 # Ignore parser debug
 y.output
