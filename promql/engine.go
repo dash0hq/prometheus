@@ -1080,10 +1080,10 @@ func extractTransformedLabelsFromFuncs(p []parser.Node) map[string][]string {
 						if lit, ok := s.Expr.(*parser.StringLiteral); ok && len(lit.Val) > 0 {
 							src := lit.Val
 							if len(dst) > 0 && len(src) > 0 && !slices.Contains(destinations, src) {
-								if _, exists := mapping[src]; !exists {
+								if v, exists := mapping[src]; !exists {
 									mapping[src] = []string{dst}
 								} else {
-									mapping[src] = append(mapping[src], dst)
+									mapping[src] = append(v, dst)
 								}
 							}
 							destinations = append(destinations, dst)
