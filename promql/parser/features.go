@@ -53,4 +53,5 @@ func (pql *promQLParser) RegisterFeatures(r features.Collector) {
 
 	// Register duration expressions.
 	r.Enable(features.PromQL, "duration_expr")
+	r.Set(features.PromQL, "unquoted_utf8_names", pql.options.EnableUnquotedUTF8Names)
 }
