@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/prometheus/common/promslog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/prometheus/util/testutil"
@@ -113,4 +114,15 @@ func TestFeaturesAPI(t *testing.T) {
 
 	// Compare the features data with the golden file.
 	require.Equal(t, expectedFeatures, apiResponse.Data, "Features mismatch. Run 'make update-features-testdata' to update the golden file.")
+}
+
+func TestSetFeatureListOptions_UnquotedUTF8Names(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		c := &flagConfig{}
+		if enabled {
+			c.featureList = []string{"promql-unquoted-utf8-names"}
+		}
+		require.NoError(t, c.setFeatureListOptions(promslog.NewNopLogger()))
+		require.Equal(t, enabled, c.parserOpts.EnableUnquotedUTF8Names)
+	}
 }
