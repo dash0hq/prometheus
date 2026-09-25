@@ -27,7 +27,14 @@ import (
 	"github.com/prometheus/prometheus/promql/promqltest"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/features"
 )
+
+func subqueryReuseFeatureRegistry(enabled bool) features.Collector {
+	registry := features.NewRegistry()
+	registry.Set(features.PromQL, features.PromQLSubqueryReuse, enabled)
+	return registry
+}
 
 type reuseCountingQueryable struct {
 	storage.Queryable
@@ -126,10 +133,10 @@ load 30s
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			run := func(enabled bool) (*promql.Result, int, promql.SubqueryReuseStats) {
+			run := func(registry features.Collector) (*promql.Result, int, promql.SubqueryReuseStats) {
 				engine := promqltest.NewTestEngineWithOpts(t, promql.EngineOpts{
 					MaxSamples: 10000, Timeout: 5 * time.Second, LookbackDelta: 5 * time.Minute,
-					EnableAtModifier: true, EnableSubqueryReuse: enabled,
+					EnableAtModifier: true, FeatureRegistry: registry,
 					NoStepSubqueryIntervalFn:         func(int64) int64 { return 30000 },
 					SubquerySelectionHintsEquivalent: tc.equivalent,
 				})
@@ -140,8 +147,8 @@ load 30s
 				result := query.Exec(t.Context())
 				return result, queryable.selections, promql.QuerySubqueryReuseStats(query)
 			}
-			original, originalSelections, _ := run(false)
-			optimized, optimizedSelections, stats := run(true)
+			original, originalSelections, _ := run(nil)
+			optimized, optimizedSelections, stats := run(subqueryReuseFeatureRegistry(true))
 			require.Equal(t, original.Err, optimized.Err)
 			require.Equal(t, original.Warnings, optimized.Warnings)
 			require.Equal(t, original.Value, optimized.Value)
@@ -172,7 +179,7 @@ load 30s
 			run := func(enabled bool) (*promql.Result, promql.SubqueryReuseStats) {
 				engine := promqltest.NewTestEngineWithOpts(t, promql.EngineOpts{
 					MaxSamples: tc.limit, Timeout: 5 * time.Second, LookbackDelta: 5 * time.Minute,
-					EnableSubqueryReuse: enabled,
+					FeatureRegistry: subqueryReuseFeatureRegistry(enabled),
 				})
 				query, err := engine.NewInstantQuery(t.Context(), reuseFaultQueryable{Queryable: store, warning: tc.warning, fail: tc.fail}, nil, expression, time.Unix(300, 0))
 				require.NoError(t, err)
@@ -203,7 +210,7 @@ load 30s
 	run := func(maxSamples int, enabled bool) (*promql.Result, int) {
 		engine := promqltest.NewTestEngineWithOpts(t, promql.EngineOpts{
 			MaxSamples: maxSamples, Timeout: 5 * time.Second, LookbackDelta: 5 * time.Minute,
-			EnableSubqueryReuse: enabled,
+			FeatureRegistry: subqueryReuseFeatureRegistry(enabled),
 		})
 		query, err := engine.NewInstantQuery(t.Context(), store, nil, expression, time.Unix(300, 0))
 		require.NoError(t, err)
@@ -237,7 +244,7 @@ load 30s
 		b.Run(name, func(b *testing.B) {
 			engine := promqltest.NewTestEngineWithOpts(b, promql.EngineOpts{
 				MaxSamples: 50_000_000, Timeout: 5 * time.Second, LookbackDelta: 5 * time.Minute,
-				EnableSubqueryReuse: enabled,
+				FeatureRegistry: subqueryReuseFeatureRegistry(enabled),
 				SubquerySelectionHintsEquivalent: func(a, c *storage.SelectHints) bool {
 					aCopy, cCopy := *a, *c
 					aCopy.AllFuncs, cCopy.AllFuncs = nil, nil

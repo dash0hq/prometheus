@@ -61,6 +61,14 @@ Enables PromQL functions that are considered experimental. These functions
 might change their name, syntax, or semantics. They might also get removed
 entirely.
 
+## PromQL subquery reuse
+
+`--enable-feature=promql-subquery-reuse`
+
+Reuses eligible completed grouped float subqueries within one query when their
+expressions, evaluation grids, and storage selection plans are equivalent.
+Reuse is limited by the query's sample limit. This feature is disabled by default.
+
 ## Start (Created) Timestamps Zero Injection
 
 `--enable-feature=created-timestamp-zero-ingestion`

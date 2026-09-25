@@ -34,6 +34,9 @@ const (
 	UI                        = "ui"
 )
 
+// PromQLSubqueryReuse identifies the experimental completed-subquery reuse feature.
+const PromQLSubqueryReuse = "subquery_reuse"
+
 // Collector defines the interface for collecting and managing feature flags.
 // It provides methods to enable, disable, and retrieve feature states.
 type Collector interface {

@@ -354,8 +354,6 @@ type EngineOpts struct {
 	// Parser is the PromQL parser instance used for parsing expressions.
 	Parser parser.Parser
 
-	// EnableSubqueryReuse reuses equivalent completed float subqueries within a query.
-	EnableSubqueryReuse bool
 	// SubquerySelectionHintsEquivalent may prove equivalent storage plans when SelectHints
 	// differ. Nil requires exact equality. It must account for every hint used by the Queryable.
 	SubquerySelectionHintsEquivalent func(a, b *storage.SelectHints) bool
@@ -491,7 +489,10 @@ func NewEngine(opts EngineOpts) *Engine {
 		)
 	}
 
+	var enableSubqueryReuse bool
 	if r := opts.FeatureRegistry; r != nil {
+		enableSubqueryReuse = r.Get()[features.PromQL][features.PromQLSubqueryReuse]
+		r.Set(features.PromQL, features.PromQLSubqueryReuse, enableSubqueryReuse)
 		r.Set(features.PromQL, "at_modifier", opts.EnableAtModifier)
 		r.Set(features.PromQL, "negative_offset", opts.EnableNegativeOffset)
 		r.Set(features.PromQL, "per_step_stats", opts.EnablePerStepStats)
@@ -521,7 +522,7 @@ func NewEngine(opts EngineOpts) *Engine {
 		useStartTimestamps:       opts.UseStartTimestamps,
 		parser:                   opts.Parser,
 
-		enableSubqueryReuse:              opts.EnableSubqueryReuse,
+		enableSubqueryReuse:              enableSubqueryReuse,
 		subquerySelectionHintsEquivalent: opts.SubquerySelectionHintsEquivalent,
 	}
 }
