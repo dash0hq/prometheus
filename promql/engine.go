@@ -207,6 +207,8 @@ type query struct {
 
 	// The engine against which the query is executed.
 	ng *Engine
+	// Query-local counters for completed subquery reuse.
+	reuseStats SubqueryReuseStats
 }
 
 type QueryOrigin struct{}
@@ -229,6 +231,14 @@ func (q *query) Stats() *stats.Statistics {
 		Timers:  q.stats,
 		Samples: q.sampleStats,
 	}
+}
+
+// QuerySubqueryReuseStats returns the query-local subquery reuse counters.
+func QuerySubqueryReuseStats(q Query) SubqueryReuseStats {
+	if query, ok := q.(*query); ok {
+		return query.reuseStats
+	}
+	return SubqueryReuseStats{}
 }
 
 // Cancel implements the Query interface.
@@ -343,6 +353,12 @@ type EngineOpts struct {
 
 	// Parser is the PromQL parser instance used for parsing expressions.
 	Parser parser.Parser
+
+	// EnableSubqueryReuse reuses equivalent completed float subqueries within a query.
+	EnableSubqueryReuse bool
+	// SubquerySelectionHintsEquivalent may prove equivalent storage plans when SelectHints
+	// differ. Nil requires exact equality. It must account for every hint used by the Queryable.
+	SubquerySelectionHintsEquivalent func(a, b *storage.SelectHints) bool
 }
 
 // Engine handles the lifetime of queries from beginning to end.
@@ -364,6 +380,9 @@ type Engine struct {
 	enableTypeAndUnitLabels  bool
 	useStartTimestamps       bool
 	parser                   parser.Parser
+
+	enableSubqueryReuse              bool
+	subquerySelectionHintsEquivalent func(a, b *storage.SelectHints) bool
 }
 
 // NewEngine returns a new engine.
@@ -501,6 +520,9 @@ func NewEngine(opts EngineOpts) *Engine {
 		enableTypeAndUnitLabels:  opts.EnableTypeAndUnitLabels,
 		useStartTimestamps:       opts.UseStartTimestamps,
 		parser:                   opts.Parser,
+
+		enableSubqueryReuse:              opts.EnableSubqueryReuse,
+		subquerySelectionHintsEquivalent: opts.SubquerySelectionHintsEquivalent,
 	}
 }
 
@@ -804,7 +826,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	querierSpan.End()
 	defer querier.Close()
 
-	ng.populateSeries(ctxPrepare, querier, s)
+	reuse := ng.populateSeries(ctxPrepare, querier, s, &query.reuseStats)
 	prepareSpanTimer.Finish()
 
 	// Modify the offset of vector and matrix selectors for the @ modifier
@@ -827,6 +849,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			enableTypeAndUnitLabels:  ng.enableTypeAndUnitLabels,
 			useStartTimestamps:       ng.useStartTimestamps,
 			querier:                  querier,
+			reuse:                    reuse,
 		}
 		query.sampleStats.InitStepTracking(start, start, 1)
 
@@ -888,6 +911,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		enableTypeAndUnitLabels:  ng.enableTypeAndUnitLabels,
 		useStartTimestamps:       ng.useStartTimestamps,
 		querier:                  querier,
+		reuse:                    reuse,
 	}
 	query.sampleStats.InitStepTracking(evaluator.startTimestamp, evaluator.endTimestamp, evaluator.interval)
 	val, warnings, err := evaluator.Eval(ctxInnerEval, s.Expr)
@@ -1052,11 +1076,12 @@ func (ng *Engine) getLastSubqueryInterval(path []parser.Node) time.Duration {
 	return interval
 }
 
-func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s *parser.EvalStmt) {
+func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s *parser.EvalStmt, reuseStats *SubqueryReuseStats) *subqueryReuse {
 	// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 	// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 	// the variable.
 	var evalRange time.Duration
+	var selections []subquerySelection
 
 	parser.Inspect(s.Expr, func(node parser.Node, path []parser.Node) error {
 		switch n := node.(type) {
@@ -1088,18 +1113,30 @@ func (ng *Engine) populateSeries(ctx context.Context, querier storage.Querier, s
 				hints.TransformedLabelsMappingForGrouping = extractTransformedLabelsFromFuncs(path[aggIdx:])
 			}
 
-			selectCtx, selectSpan := otel.Tracer("").Start(ctx, "querierSelect", trace.WithAttributes(
-				attribute.String("selector", n.String()),
-				attribute.Int64("start", hints.Start),
-				attribute.Int64("end", hints.End),
-			))
-			n.UnexpandedSeriesSet = querier.Select(selectCtx, false, hints, n.LabelMatchers...)
-			selectSpan.End()
+			selection := subquerySelection{selector: n, hints: hints}
+			if !ng.enableSubqueryReuse {
+				selection.selectSeries(ctx, querier)
+			} else {
+				selection.path = append([]parser.Node(nil), path...)
+				selections = append(selections, selection)
+			}
 		case *parser.MatrixSelector:
 			evalRange = n.Range
 		}
 		return nil
 	})
+
+	if !ng.enableSubqueryReuse {
+		return nil
+	}
+	reuse := planSubqueryReuse(s, selections, ng.noStepSubqueryIntervalFn, ng.maxSamplesPerQuery, reuseStats, ng.subquerySelectionHintsEquivalent)
+	for i := range selections {
+		if reuse != nil && reuse.skipped[selections[i].selector] {
+			continue
+		}
+		selections[i].selectSeries(ctx, querier)
+	}
+	return reuse
 }
 
 // extractFuncFromPath walks up the path and searches for the first instance of
@@ -1277,6 +1314,7 @@ type evaluator struct {
 	enableTypeAndUnitLabels  bool
 	useStartTimestamps       bool
 	querier                  storage.Querier
+	reuse                    *subqueryReuse
 }
 
 // errorf causes a panic with the input formatted into an error.
@@ -2117,22 +2155,33 @@ func (ev *evaluator) runSubquery(ctx context.Context, e *parser.SubqueryExpr) (p
 	return res, childStats, ws
 }
 
-// evalSubquery evaluates given SubqueryExpr and returns an equivalent
-// evaluated MatrixSelector in its place. Note that the Name and LabelMatchers are not set.
-// Only PeakSamples and SamplesRead from the subquery are merged into the
-// parent; TotalSamples is intentionally not merged because the call/range-vector
-// caller will count samples again from the materialized matrix.
+// evalSubquery returns an evaluated MatrixSelector for the given SubqueryExpr.
+// Note that the Name and LabelMatchers are not set. On a new evaluation only
+// PeakSamples and SamplesRead from the subquery are merged into the parent;
+// TotalSamples is counted by the call/range-vector consumer. A reuse hit does
+// not read or merge child samples again.
 //
 // outerOffset is durationMilliseconds(subq.OriginalOffset) so the merge can
 // shift child timestamps to match the parent step that consumes them.
 // outerRange is the outer call's selRange so the merge can drop subquery
 // iterations whose timestamps fall in gaps between consecutive outer-step
 // windows (i.e. when the outer step is wider than the subquery range).
-func (ev *evaluator) evalSubquery(ctx context.Context, subq *parser.SubqueryExpr, outerOffset, outerRange int64) (*parser.MatrixSelector, int, annotations.Annotations) {
-	val, childStats, ws := ev.runSubquery(ctx, subq)
-	ev.samplesStats.UpdatePeakFromSubquery(childStats)
-	ev.samplesStats.MergeSamplesReadFromSubquery(childStats, ev.startTimestamp, ev.interval, ev.numSteps(), outerOffset, outerRange)
-	mat := val.(Matrix)
+// The returned function releases the consumer's matrix view when evaluation ends.
+func (ev *evaluator) evalSubquery(ctx context.Context, subq *parser.SubqueryExpr, outerOffset, outerRange int64) (*parser.MatrixSelector, func(), annotations.Annotations) {
+	var mat Matrix
+	var ws annotations.Annotations
+	var release func()
+	if ev.reuse != nil {
+		mat, release, ws = ev.reuse.matrix(ctx, ev, subq, outerOffset, outerRange)
+	}
+	if release == nil {
+		val, childStats, warnings := ev.runSubquery(ctx, subq)
+		ev.samplesStats.UpdatePeakFromSubquery(childStats)
+		ev.samplesStats.MergeSamplesReadFromSubquery(childStats, ev.startTimestamp, ev.interval, ev.numSteps(), outerOffset, outerRange)
+		mat = val.(Matrix)
+		ws = warnings
+		release = func() { ev.currentSamples -= mat.TotalSamples() }
+	}
 	vs := &parser.VectorSelector{
 		OriginalOffset: subq.OriginalOffset,
 		Offset:         subq.Offset,
@@ -2173,7 +2222,7 @@ func (ev *evaluator) evalSubquery(ctx context.Context, subq *parser.SubqueryExpr
 		}
 		vs.Series = append(vs.Series, NewStorageSeries(s))
 	}
-	return ms, mat.TotalSamples(), ws
+	return ms, release, ws
 }
 
 // eval evaluates the given expression as the given AST expression node requires.
@@ -2265,13 +2314,13 @@ func (ev *evaluator) eval(ctx context.Context, expr parser.Expr) (parser.Value, 
 				matrixArg = true
 				matrixFromSubquery = true
 				// Replacing parser.SubqueryExpr with parser.MatrixSelector.
-				val, totalSamples, ws := ev.evalSubquery(ctx, subq, durationMilliseconds(subq.OriginalOffset), durationMilliseconds(subq.Range))
+				val, release, ws := ev.evalSubquery(ctx, subq, durationMilliseconds(subq.OriginalOffset), durationMilliseconds(subq.Range))
 				e.Args[i] = val
 				warnings.Merge(ws)
 				defer func() {
 					// subquery result takes space in the memory. Get rid of that at the end.
 					val.VectorSelector.(*parser.VectorSelector).Series = nil
-					ev.currentSamples -= totalSamples
+					release()
 				}()
 				break
 			}
