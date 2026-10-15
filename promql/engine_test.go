@@ -4427,7 +4427,7 @@ func TestSubquerySelector(t *testing.T) {
 						nil,
 						promql.Matrix{
 							promql.Series{
-								Floats: []promql.FPoint{{F: 1000, T: 105000}, {F: 1100, T: 110000}, {F: 1100, T: 115000}, {F: 1200, T: 120000}},
+								Floats: []promql.FPoint{{F: 1300, T: 105000}, {F: 1430, T: 110000}, {F: 1430, T: 115000}, {F: 1560, T: 120000}},
 								Metric: labels.EmptyLabels(),
 							},
 						},
@@ -4442,7 +4442,7 @@ func TestSubquerySelector(t *testing.T) {
 						nil,
 						promql.Matrix{
 							promql.Series{
-								Floats: []promql.FPoint{{F: 1000, T: 100000}, {F: 1000, T: 105000}, {F: 1100, T: 110000}, {F: 1100, T: 115000}, {F: 1200, T: 120000}},
+								Floats: []promql.FPoint{{F: 1300, T: 100000}, {F: 1300, T: 105000}, {F: 1430, T: 110000}, {F: 1430, T: 115000}, {F: 1560, T: 120000}},
 								Metric: labels.EmptyLabels(),
 							},
 						},

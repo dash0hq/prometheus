@@ -16,6 +16,8 @@ package labels
 import (
 	"bytes"
 	"strconv"
+
+	"github.com/grafana/regexp/syntax"
 )
 
 // MatchType is an enum for label matching types.
@@ -75,13 +77,62 @@ func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
 		Value: v,
 	}
 	if t == MatchRegexp || t == MatchNotRegexp {
-		re, err := NewFastRegexMatcher(v)
+		pattern := v
+		if v != "" {
+			parsed, err := syntax.Parse(v, syntax.Perl|syntax.DotNL)
+			if err != nil {
+				return nil, err
+			}
+			for parsed.Op == syntax.OpCapture {
+				parsed = parsed.Sub[0]
+			}
+			wholeValue := parsed.Op == syntax.OpConcat && len(parsed.Sub) >= 2 &&
+				parsed.Sub[0].Op == syntax.OpBeginText && parsed.Sub[len(parsed.Sub)-1].Op == syntax.OpEndText
+			// Explicit whole-value anchors retain set-match optimizations; empty regexes retain equality semantics.
+			if !wholeValue {
+				pattern = ".*(?:" + v + ").*"
+				if trimmed, ok := trimOuterStars(parsed); ok {
+					pattern = ".*(?:" + trimmed.String() + ").*"
+				}
+			}
+		}
+		re, err := NewFastRegexMatcher(pattern)
 		if err != nil {
 			return nil, err
 		}
 		m.re = re
 	}
 	return m, nil
+}
+
+// trimOuterStars drops the starred elements at either end of re. Inside the unanchored `.*(?:…).*`
+// wrapper they can always match empty, so dropping them keeps the meaning and lets
+// NewFastRegexMatcher find literal matches instead of backtracking through a nested `.*`.
+func trimOuterStars(re *syntax.Regexp) (*syntax.Regexp, bool) {
+	if re.Op == syntax.OpStar {
+		return &syntax.Regexp{Op: syntax.OpEmptyMatch}, true
+	}
+	if re.Op != syntax.OpConcat {
+		return re, false
+	}
+	subs := re.Sub
+	for len(subs) > 0 && subs[0].Op == syntax.OpStar {
+		subs = subs[1:]
+	}
+	for len(subs) > 0 && subs[len(subs)-1].Op == syntax.OpStar {
+		subs = subs[:len(subs)-1]
+	}
+	switch len(subs) {
+	case len(re.Sub):
+		return re, false
+	case 0:
+		return &syntax.Regexp{Op: syntax.OpEmptyMatch}, true
+	case 1:
+		return subs[0], true
+	}
+	trimmed := *re
+	trimmed.Sub = subs
+	return &trimmed, true
 }
 
 // MustNewMatcher panics on error - only for use in tests!
@@ -202,11 +253,11 @@ func (m *Matcher) GetRegexString() string {
 	if m.re == nil {
 		return ""
 	}
-	return m.re.GetRegexString()
+	return m.Value
 }
 
 // SetMatches returns a set of equality matchers for the current regex matchers if possible.
-// For examples the regexp `a(b|f)` will returns "ab" and "af".
+// For example, the regexp `^a(b|f)$` returns "ab" and "af".
 // Returns nil if we can't replace the regexp by only equality matchers.
 func (m *Matcher) SetMatches() []string {
 	if m.re == nil {
