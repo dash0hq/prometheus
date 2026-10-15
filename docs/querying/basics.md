@@ -274,7 +274,7 @@ against regular expressions. The following label matching operators exist:
 * `=~`: Select labels that regex-match the provided string.
 * `!~`: Select labels that do not regex-match the provided string.
 
-[Regex](#regular-expressions) matches are fully anchored. A match of `env=~"foo"` is treated as `env=~"^foo$"`.
+[Regex](#regular-expressions) label matches are unanchored in the Dash0 fork. For example, `env=~"foo"` also matches `my-foo-env`. Use `env=~"^foo$"` for a whole-value match. An empty regex matches only an empty or missing label.
 
 For example, this selects all `http_requests_total` time series for `staging`,
 `testing`, and `development` environments and HTTP methods other than `GET`.
@@ -498,7 +498,7 @@ PromQL supports line comments that start with `#`. Example:
 
 All regular expressions in Prometheus use [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
 
-Regex matches are always fully anchored.
+Label regex matches are unanchored in the Dash0 fork, except that empty regexes compare with the empty string. Explicit anchors retain their meaning. Function regexes, such as the regex passed to `label_replace`, retain upstream behavior.
 
 ## Gotchas
 
