@@ -94,6 +94,7 @@ var TestParserOpts = parser.Options{
 	ExperimentalDurationExpr:     true,
 	EnableExtendedRangeSelectors: true,
 	EnableBinopFillModifiers:     true,
+	EnableUnquotedUTF8Names:      true,
 }
 
 // NewTestEngine creates a promql.Engine with enablePerStepStats, lookbackDelta and maxSamples, and returns it.
