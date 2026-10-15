@@ -81,6 +81,7 @@ load 1m
   {"Inf.total"} 4
   {"bool.total"} 5
   {"rate.total"} 6
+  plain 0.75
 
 eval instant at 0m histogram.count
   {"histogram.count"} 1
@@ -99,6 +100,17 @@ eval instant at 0m bool.total
 
 eval instant at 0m rate.total
   {"rate.total"} 6
+
+# A keyword directly followed by a decimal literal keeps its existing meaning
+# instead of becoming a dotted metric name.
+eval instant at 0m plain > bool.5
+  {} 1
+
+eval instant at 0m plain atan2.5
+  {} 0.982793723247329
+
+eval instant at 0m plain + .5
+  {} 1.25
 
 clear
 
