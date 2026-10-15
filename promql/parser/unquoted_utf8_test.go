@@ -61,6 +61,7 @@ func TestUnquotedUTF8Names(t *testing.T) {
 		"rate(http.server.requests[5m])", "http.server.requests[5m:1m]",
 		"http.server.requests offset 5m", "http.server.requests @ 0.5",
 		"http.server.requests + .5", "Inf.total + Inf", "NaN.total or foo",
+		"foo{service.name>=\"5\", équipe<\"b\"}",
 	} {
 		t.Run(input, func(t *testing.T) {
 			expr, err := enabled.ParseExpr(input)

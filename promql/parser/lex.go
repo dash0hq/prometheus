@@ -1137,50 +1137,60 @@ func lexIdentifier(l *Lexer) stateFn {
 // a colon rune. If the identifier is a keyword the respective keyword Item
 // is scanned.
 func lexKeywordOrIdentifier(l *Lexer) stateFn {
-Loop:
 	for {
-		switch r := l.next(); {
-		case l.isNameContinue(r) || r == ':':
-			// absorb.
-		default:
-			l.backup()
-			word := l.input[l.start:l.pos]
-			kw, ok := key[strings.ToLower(word)]
-			if ok {
-				// Unicode letters that lowercase to ASCII must retain their identity as names.
-				for _, r := range word {
-					if r >= utf8.RuneSelf {
-						ok = false
-						break
-					}
-				}
+		r := l.next()
+		// Not l.peek(): at EOF it zeroes l.width and breaks the backup below.
+		if r == '.' && int(l.pos) < len(l.input) && isDigit(rune(l.input[l.pos])) {
+			// Without unquoted UTF-8 names, `foo > bool.5` compares against 0.5;
+			// absorbing the dot would silently turn it into a metric named `bool.5`.
+			if _, ok := keyword(l.input[l.start : l.pos-1]); ok {
+				l.backup()
+				break
 			}
-			switch {
-			case ok:
-				// For fill/fill_left/fill_right, only treat as keyword if followed by '('
-				// This allows using these as metric names (e.g., "fill + fill").
-				// This could be done for other keywords as well, but for the new fill
-				// modifiers this is especially important so we don't break any existing
-				// queries.
-				if kw == FILL || kw == FILL_LEFT || kw == FILL_RIGHT {
-					if !l.peekFollowedByLeftParen() {
-						l.emit(IDENTIFIER)
-						break Loop
-					}
-				}
-				l.emit(kw)
-			case !strings.Contains(word, ":"):
-				l.emit(IDENTIFIER)
-			default:
-				l.emit(METRIC_IDENTIFIER)
-			}
-			break Loop
 		}
+		if !l.isNameContinue(r) && r != ':' {
+			l.backup()
+			break
+		}
+	}
+	word := l.input[l.start:l.pos]
+	kw, ok := keyword(word)
+	switch {
+	case ok:
+		// For fill/fill_left/fill_right, only treat as keyword if followed by '('
+		// This allows using these as metric names (e.g., "fill + fill").
+		// This could be done for other keywords as well, but for the new fill
+		// modifiers this is especially important so we don't break any existing
+		// queries.
+		if (kw == FILL || kw == FILL_LEFT || kw == FILL_RIGHT) && !l.peekFollowedByLeftParen() {
+			l.emit(IDENTIFIER)
+		} else {
+			l.emit(kw)
+		}
+	case !strings.Contains(word, ":"):
+		l.emit(IDENTIFIER)
+	default:
+		l.emit(METRIC_IDENTIFIER)
 	}
 	if l.seriesDesc && l.peek() != '{' {
 		return lexValueSequence
 	}
 	return lexStatements
+}
+
+func keyword(word string) (ItemType, bool) {
+	kw, ok := key[strings.ToLower(word)]
+	if !ok {
+		return 0, false
+	}
+	// Unicode letters that lowercase to ASCII, such as the Kelvin sign in
+	// `topK`, must retain their identity as names.
+	for _, r := range word {
+		if r >= utf8.RuneSelf {
+			return 0, false
+		}
+	}
+	return kw, true
 }
 
 // peekFollowedByLeftParen checks if the next non-whitespace character is '('.
