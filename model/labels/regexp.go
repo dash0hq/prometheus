@@ -133,6 +133,9 @@ func (m *FastRegexMatcher) compileMatchStringFunction() func(string) bool {
 			if !hasPrefixCaseInsensitive(s, m.prefix) {
 				return false
 			}
+			if m.stringMatcher != nil {
+				return m.stringMatcher.Matches(s)
+			}
 			return m.re.MatchString(s)
 		}
 	}
@@ -623,14 +626,13 @@ func stringMatcherFromRegexpInternal(re *syntax.Regexp) StringMatcher {
 				suffixCaseSensitive: matchesCaseSensitive,
 			}
 
-		// We found literals in the middle. We can trigger the fast path only if
-		// the matches are case sensitive because containsStringMatcher doesn't
-		// support case insensitive.
-		case matchesCaseSensitive:
+		// We found literals in the middle.
+		default:
 			return &containsStringMatcher{
-				substrings: matches,
-				left:       left,
-				right:      right,
+				substrings:      matches,
+				left:            left,
+				right:           right,
+				caseInsensitive: !matchesCaseSensitive,
 			}
 		}
 	}
@@ -684,6 +686,10 @@ type containsStringMatcher struct {
 
 	// The matcher that must match the right side. Can be nil.
 	right StringMatcher
+
+	// caseInsensitive matches the substrings under Unicode simple case folding, like the regexp
+	// engine's (?i).
+	caseInsensitive bool
 }
 
 func (m *containsStringMatcher) Matches(s string) bool {
@@ -693,7 +699,7 @@ func (m *containsStringMatcher) Matches(s string) bool {
 			searchStartPos := 0
 
 			for {
-				pos := strings.Index(s[searchStartPos:], substr)
+				pos, n := m.index(s[searchStartPos:], substr)
 				if pos < 0 {
 					break
 				}
@@ -704,25 +710,73 @@ func (m *containsStringMatcher) Matches(s string) bool {
 
 				// If both the left and right matchers match, then we can stop searching because
 				// we've found a match.
-				if m.left.Matches(s[:pos]) && m.right.Matches(s[pos+len(substr):]) {
+				if m.left.Matches(s[:pos]) && m.right.Matches(s[pos+n:]) {
 					return true
 				}
 
 				// Continue searching for another occurrence of the substring inside the text.
-				searchStartPos = pos + 1
+				_, size := utf8.DecodeRuneInString(s[pos:])
+				searchStartPos = pos + size
 			}
 		case m.left != nil:
 			// If we have to check for characters on the left then we need to match a suffix.
-			if strings.HasSuffix(s, substr) && m.left.Matches(s[:len(s)-len(substr)]) {
+			if n, ok := m.suffixLen(s, substr); ok && m.left.Matches(s[:len(s)-n]) {
 				return true
 			}
 		case m.right != nil:
-			if strings.HasPrefix(s, substr) && m.right.Matches(s[len(substr):]) {
+			if n, ok := m.prefixLen(s, substr); ok && m.right.Matches(s[n:]) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// index returns the position of the first match of substr in s and the match's length in s, which
+// differs from len(substr) when case folding changes a rune's encoded length. It returns -1 if
+// there is no match.
+func (m *containsStringMatcher) index(s, substr string) (int, int) {
+	if !m.caseInsensitive {
+		return strings.Index(s, substr), len(substr)
+	}
+	// A match can only start at a byte that folds to substr's first byte, or at a non-ASCII rune:
+	// 'k' and 's' also fold with the non-ASCII Kelvin sign and long s.
+	asciiFirst := substr != "" && substr[0] < utf8.RuneSelf
+	var lower, upper byte
+	if asciiFirst {
+		lower, upper = lowerASCII(substr[0]), upperASCII(substr[0])
+	}
+	for i := 0; i <= len(s); {
+		if asciiFirst && i < len(s) {
+			if c := s[i]; c < utf8.RuneSelf && c != lower && c != upper {
+				i++
+				continue
+			}
+		}
+		if n, ok := prefixCaseInsensitiveMatchLen(s[i:], substr); ok {
+			return i, n
+		}
+		if i == len(s) {
+			break
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	return -1, 0
+}
+
+func (m *containsStringMatcher) prefixLen(s, prefix string) (int, bool) {
+	if m.caseInsensitive {
+		return prefixCaseInsensitiveMatchLen(s, prefix)
+	}
+	return len(prefix), strings.HasPrefix(s, prefix)
+}
+
+func (m *containsStringMatcher) suffixLen(s, suffix string) (int, bool) {
+	if m.caseInsensitive {
+		return suffixCaseInsensitiveMatchLen(s, suffix)
+	}
+	return len(suffix), strings.HasSuffix(s, suffix)
 }
 
 func newLiteralPrefixStringMatcher(prefix string, prefixCaseSensitive bool, right StringMatcher) StringMatcher {
@@ -1291,6 +1345,13 @@ func suffixCaseInsensitiveMatchLen(s, suffix string) (int, bool) {
 func lowerASCII(c byte) byte {
 	if 'A' <= c && c <= 'Z' {
 		return c + 'a' - 'A'
+	}
+	return c
+}
+
+func upperASCII(c byte) byte {
+	if 'a' <= c && c <= 'z' {
+		return c - 'a' + 'A'
 	}
 	return c
 }
