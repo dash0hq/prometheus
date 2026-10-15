@@ -16,6 +16,8 @@ package labels
 import (
 	"bytes"
 	"strconv"
+
+	"github.com/grafana/regexp/syntax"
 )
 
 // MatchType is an enum for label matching types.
@@ -75,13 +77,76 @@ func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
 		Value: v,
 	}
 	if t == MatchRegexp || t == MatchNotRegexp {
-		re, err := NewFastRegexMatcher(v)
+		pattern := v
+		if v != "" {
+			parsed, err := syntax.Parse(v, syntax.Perl|syntax.DotNL)
+			if err != nil {
+				return nil, err
+			}
+			for parsed.Op == syntax.OpCapture {
+				parsed = parsed.Sub[0]
+			}
+			pattern = unanchoredPattern(parsed)
+		}
+		re, err := NewFastRegexMatcher(pattern)
 		if err != nil {
 			return nil, err
 		}
 		m.re = re
 	}
 	return m, nil
+}
+
+// unanchoredPattern returns a pattern for NewFastRegexMatcher, which anchors at both ends, that
+// matches wherever re matches inside a value. An explicit ^ or $ at an end of re anchors that end;
+// it is removed rather than kept inside the pattern, where it would disable the string matchers.
+func unanchoredPattern(re *syntax.Regexp) string {
+	body := []*syntax.Regexp{re}
+	if re.Op == syntax.OpConcat {
+		body = re.Sub
+	}
+	startAnchored := len(body) > 0 && body[0].Op == syntax.OpBeginText
+	if startAnchored {
+		body = body[1:]
+	}
+	endAnchored := len(body) > 0 && body[len(body)-1].Op == syntax.OpEndText
+	if endAnchored {
+		body = body[:len(body)-1]
+	}
+	if !startAnchored {
+		for len(body) > 0 && body[0].Op == syntax.OpStar {
+			body = body[1:]
+		}
+	}
+	if !endAnchored {
+		for len(body) > 0 && body[len(body)-1].Op == syntax.OpStar {
+			body = body[:len(body)-1]
+		}
+	}
+
+	pattern := "(?:" + concat(re, body).String() + ")"
+	if !startAnchored {
+		pattern = ".*" + pattern
+	}
+	if !endAnchored {
+		pattern += ".*"
+	}
+	return pattern
+}
+
+// concat rebuilds subs as one expression with the flags of re. Starred elements dropped from an
+// unanchored end can always match empty inside the .* wrapper, so dropping them keeps the meaning.
+func concat(re *syntax.Regexp, subs []*syntax.Regexp) *syntax.Regexp {
+	switch len(subs) {
+	case 0:
+		return &syntax.Regexp{Op: syntax.OpEmptyMatch}
+	case 1:
+		return subs[0]
+	}
+	if re.Op == syntax.OpConcat && len(subs) == len(re.Sub) {
+		return re
+	}
+	return &syntax.Regexp{Op: syntax.OpConcat, Flags: re.Flags, Sub: subs}
 }
 
 // MustNewMatcher panics on error - only for use in tests!
@@ -202,11 +267,11 @@ func (m *Matcher) GetRegexString() string {
 	if m.re == nil {
 		return ""
 	}
-	return m.re.GetRegexString()
+	return m.Value
 }
 
 // SetMatches returns a set of equality matchers for the current regex matchers if possible.
-// For examples the regexp `a(b|f)` will returns "ab" and "af".
+// For example, the regexp `^a(b|f)$` returns "ab" and "af".
 // Returns nil if we can't replace the regexp by only equality matchers.
 func (m *Matcher) SetMatches() []string {
 	if m.re == nil {

@@ -16,7 +16,11 @@ package labels
 import (
 	"fmt"
 	"math/rand"
+	"slices"
+	"strconv"
 	"testing"
+
+	"github.com/grafana/regexp"
 
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +72,7 @@ func TestMatcher(t *testing.T) {
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "bar"),
 			value:   "foo-bar",
-			match:   false,
+			match:   true,
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, ".*bar"),
@@ -83,7 +87,7 @@ func TestMatcher(t *testing.T) {
 		{
 			matcher: mustNewMatcher(t, MatchNotRegexp, "bar"),
 			value:   "foo-bar",
-			match:   true,
+			match:   false,
 		},
 		{
 			matcher: mustNewMatcher(t, MatchNotRegexp, ".*bar"),
@@ -93,7 +97,7 @@ func TestMatcher(t *testing.T) {
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "$*bar"),
 			value:   "foo-bar",
-			match:   false,
+			match:   true,
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "bar^+"),
@@ -168,23 +172,23 @@ func TestPrefix(t *testing.T) {
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "abc.+"),
-			prefix:  "abc",
+			prefix:  "",
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "abcd|abc.+"),
-			prefix:  "abc",
+			prefix:  "",
 		},
 		{
 			matcher: mustNewMatcher(t, MatchNotRegexp, "abcd|abc.+"),
-			prefix:  "abc",
+			prefix:  "",
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "abc(def|ghj)|ab|a."),
-			prefix:  "a",
+			prefix:  "",
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "foo.+bar|foo.*baz"),
-			prefix:  "foo",
+			prefix:  "",
 		},
 		{
 			matcher: mustNewMatcher(t, MatchRegexp, "abc|.*"),
@@ -201,7 +205,7 @@ func TestPrefix(t *testing.T) {
 		{
 			matcher:               mustNewMatcher(t, MatchNotRegexp, "(?i)abc.+"),
 			prefix:                "",
-			caseInsensitivePrefix: true,
+			caseInsensitivePrefix: false,
 		},
 	} {
 		t.Run(fmt.Sprintf("%d: %s", i, tc.matcher), func(t *testing.T) {
@@ -378,6 +382,205 @@ func BenchmarkMatcher_String(b *testing.B) {
 			for i := 0; i <= b.N; i++ {
 				m := bc.matchers[i%len(bc.matchers)]
 				_ = m.String()
+			}
+		})
+	}
+}
+
+func TestMatcherUnanchored(t *testing.T) {
+	tests := []struct {
+		name    string
+		matcher *Matcher
+		matches []string
+		rejects []string
+	}{
+		{
+			name:    "regex alternation matches unanchored",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "frontend|cartservice"),
+			matches: []string{"frontend", "cartservice", "frontendproxy", "my-cartservice-v2"},
+			rejects: []string{"checkout", "Frontend", ""},
+		},
+		{
+			name:    "explicit anchors keep their meaning",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "^(frontend|cartservice)$"),
+			matches: []string{"frontend", "cartservice"},
+			rejects: []string{"frontendproxy", "xfrontend"},
+		},
+		{
+			name:    "anchor on one alternative only",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "^front|proxy$"),
+			matches: []string{"frontend", "frontendproxy", "xproxy"},
+			rejects: []string{"xfrontend", "proxyx"},
+		},
+		{
+			name:    "anchors split across alternatives",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "^front$|^proxy$"),
+			matches: []string{"front", "proxy"},
+			rejects: []string{"frontproxy", "xproxy"},
+		},
+		{
+			name:    "anchors split across captures",
+			matcher: MustNewMatcher(MatchRegexp, "k", "^(a)|(b)$"),
+			matches: []string{"ax", "xb"},
+			rejects: []string{"xa", "bx"},
+		},
+		{
+			name:    "character class matches unanchored",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "service-4[0-9]"),
+			matches: []string{"my-service-42-x"},
+			rejects: []string{"service-4x"},
+		},
+		{
+			name:    "prefix and suffix literals match unanchored",
+			matcher: MustNewMatcher(MatchRegexp, "k", "a.c"),
+			matches: []string{"xabcx"},
+			rejects: []string{"ac"},
+		},
+		{
+			name:    "negated regex is the complement of the unanchored match",
+			matcher: MustNewMatcher(MatchNotRegexp, "service_name", "frontend"),
+			matches: []string{"checkout", "FrontEnd", ""},
+			rejects: []string{"frontend", "frontendproxy"},
+		},
+		{
+			name:    "negated anchored alternation",
+			matcher: MustNewMatcher(MatchNotRegexp, "k", "^(a|b)$"),
+			matches: []string{"ab", ""},
+			rejects: []string{"a", "b"},
+		},
+		{
+			name:    "empty regex compares with the empty string",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", ""),
+			matches: []string{""},
+			rejects: []string{"frontend"},
+		},
+		{
+			name:    "negated empty regex requires a value",
+			matcher: MustNewMatcher(MatchNotRegexp, "service_name", ""),
+			matches: []string{"frontend"},
+			rejects: []string{""},
+		},
+		{
+			name:    "match-all regex also matches a missing label",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", ".*"),
+			matches: []string{"", "frontend"},
+		},
+		{
+			name:    "user case flag still applies",
+			matcher: MustNewMatcher(MatchRegexp, "service_name", "(?i)front"),
+			matches: []string{"xFrontEnd"},
+		},
+		{
+			name:    "dot matches a newline like the Prometheus matcher did",
+			matcher: MustNewMatcher(MatchRegexp, "k", "a.b"),
+			matches: []string{"a\nb"},
+		},
+		{
+			name:    "equality stays whole-value",
+			matcher: MustNewMatcher(MatchEqual, "service_name", "frontend"),
+			matches: []string{"frontend"},
+			rejects: []string{"frontendproxy", "Frontend"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.matcher.Type == MatchRegexp || tt.matcher.Type == MatchNotRegexp {
+				require.Equal(t, tt.matcher.Value, tt.matcher.GetRegexString())
+			}
+			for _, v := range tt.matches {
+				require.Truef(t, tt.matcher.Matches(v), "%s should match %q", tt.matcher, v)
+			}
+			for _, v := range tt.rejects {
+				require.Falsef(t, tt.matcher.Matches(v), "%s should reject %q", tt.matcher, v)
+			}
+		})
+	}
+}
+
+func TestMatcherUnanchoredAgreesWithRegexpSearch(t *testing.T) {
+	testValues := append([]string{}, values...)
+	testValues = append(testValues, generateRandomValues()...)
+	for _, r := range append(slices.Clone(regexes), unanchoredRegexes...) {
+		if r == "" {
+			continue
+		}
+		search := regexp.MustCompile("(?s:" + r + ")")
+		for _, mt := range []MatchType{MatchRegexp, MatchNotRegexp} {
+			m := MustNewMatcher(mt, "k", r)
+			for _, v := range testValues {
+				require.Equalf(t, search.MatchString(v) == (mt == MatchRegexp), m.Matches(v), "%s on %q", m, v)
+			}
+		}
+	}
+}
+
+var unanchoredRegexes = []string{
+	"^foo.*",
+	"^foo",
+	"foo$",
+	".*foo$",
+	"^foo.*bar$",
+	"^(foo|bar)",
+	"(foo|bar)$",
+	"^(?i)foo",
+	"(?i)^foo.*",
+	"(?i)foo$",
+	"(?i)foo|bar",
+	"(?i).*(foo|bar).*",
+	".*(?i:sk).*",
+	"(?i)k",
+	"(?i)s-.*",
+	"(?i)ſ",
+	`(?i)\x{212a}`,
+	"(?i)foo.+bar",
+	"^$",
+	"^",
+	"$",
+	"^.*$",
+}
+
+func TestMatcherFastPathsForAnchorsAndCaseInsensitiveSubstrings(t *testing.T) {
+	for _, r := range []string{
+		"^remove_connector.*",
+		"^remove_connector",
+		"remove_connector$",
+		"^remove_(connector|metric_recorder)_id_from_.*",
+		"(?i)^remove_connector.*",
+		"(?i)app-1717|app-4242",
+		"(?i)shadow-.*",
+		"(?i)remove_(connector|metric_recorder)_id_from_",
+	} {
+		m := MustNewMatcher(MatchRegexp, "k", r)
+		require.NotNilf(t, m.re.stringMatcher, "%s runs through the regex engine", r)
+	}
+}
+
+func TestMatcherUnanchoredMetadata(t *testing.T) {
+	for _, mt := range []MatchType{MatchRegexp, MatchNotRegexp} {
+		m := MustNewMatcher(mt, "service_name", "frontend|cartservice")
+		require.Empty(t, m.SetMatches())
+		require.Empty(t, m.Prefix())
+		inverse, err := m.Inverse()
+		require.NoError(t, err)
+		require.NotEqual(t, m.Matches("frontendproxy"), inverse.Matches("frontendproxy"))
+		anchored := MustNewMatcher(mt, "service_name", "^(frontend|cartservice)$")
+		require.ElementsMatch(t, []string{"frontend", "cartservice"}, anchored.SetMatches())
+	}
+}
+
+func BenchmarkMatcherUnanchoredPatterns(b *testing.B) {
+	values := make([]string, 5000)
+	for i := range values {
+		values[i] = "remove_connector_id_from_dash0.spans.red_" + strconv.Itoa(i)
+	}
+	for _, pattern := range []string{
+		"^(a|b)$", "app-1717|app-4242", "shadow-.*", "^remove_connector.*", "red_42$",
+		"(?i)^(a|b)$", "(?i)app-1717|app-4242", "(?i)shadow-.*", "(?i)^remove_connector.*", "(?i)red_42$",
+	} {
+		m := MustNewMatcher(MatchRegexp, "k", pattern)
+		b.Run(pattern, func(b *testing.B) {
+			for i := 0; b.Loop(); i++ {
+				m.Matches(values[i%len(values)])
 			}
 		})
 	}

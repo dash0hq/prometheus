@@ -48,6 +48,12 @@ var (
 		".+foo.+",
 		".*foo.*|",
 		"(?i).*foo.*",
+		"(?i).*(foo|bar).*",
+		"(?i).+(foo|bar).+",
+		"(?i).*(foo|bar)",
+		"(?i)(foo|bar).*",
+		".*(?i:sk).*",
+		".*(?i:k).+",
 		".*foo.*|bar.*",
 		"foo.*|.*bar.*",
 		".*foo.*|.*bar.*",
@@ -430,10 +436,7 @@ func TestNewFastRegexMatcher(t *testing.T) {
 		{"^((.*)(bar|b|buzz)(.+)|foo)$", orStringMatcher([]StringMatcher{&containsStringMatcher{substrings: []string{"bar", "b", "buzz"}, left: trueMatcher{}, right: &anyNonEmptyStringMatcher{matchNL: true}}, &equalStringMatcher{s: "foo", caseSensitive: true}})},
 		{"((fo(bar))|.+foo)", orStringMatcher([]StringMatcher{orStringMatcher([]StringMatcher{&equalStringMatcher{s: "fobar", caseSensitive: true}}), &literalSuffixStringMatcher{suffix: "foo", suffixCaseSensitive: true, left: &anyNonEmptyStringMatcher{matchNL: true}}})},
 		{"(.+)/(gateway|cortex-gw|cortex-gw-internal)", &containsStringMatcher{substrings: []string{"/gateway", "/cortex-gw", "/cortex-gw-internal"}, left: &anyNonEmptyStringMatcher{matchNL: true}, right: nil}},
-		// we don't support case insensitive matching for contains.
-		// This is because there's no strings.IndexOfFold function.
-		// We can revisit later if this is really popular by using strings.ToUpper.
-		{"^(.*)((?i)foo|foobar)(.*)$", nil},
+		{"^(.*)((?i)foo|foobar)(.*)$", &containsStringMatcher{left: trueMatcher{}, substrings: []string{"FOO", "FOOBAR"}, right: trueMatcher{}, caseInsensitive: true}},
 		{"(api|rpc)_(v1|prom)_((?i)push|query)", nil},
 		{"[a-z][a-z]", nil},
 		{"[1^3]", &equalMultiStringSliceMatcher{values: []string{"1", "3", "^"}, lengthsMask: 0b10, caseSensitive: true}},
