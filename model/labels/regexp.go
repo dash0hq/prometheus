@@ -133,6 +133,9 @@ func (m *FastRegexMatcher) compileMatchStringFunction() func(string) bool {
 			if !hasPrefixCaseInsensitive(s, m.prefix) {
 				return false
 			}
+			if m.stringMatcher != nil {
+				return m.stringMatcher.Matches(s)
+			}
 			return m.re.MatchString(s)
 		}
 	}
@@ -736,7 +739,20 @@ func (m *containsStringMatcher) index(s, substr string) (int, int) {
 	if !m.caseInsensitive {
 		return strings.Index(s, substr), len(substr)
 	}
+	// A match can only start at a byte that folds to substr's first byte, or at a non-ASCII rune:
+	// 'k' and 's' also fold with the non-ASCII Kelvin sign and long s.
+	asciiFirst := substr != "" && substr[0] < utf8.RuneSelf
+	var lower, upper byte
+	if asciiFirst {
+		lower, upper = lowerASCII(substr[0]), upperASCII(substr[0])
+	}
 	for i := 0; i <= len(s); {
+		if asciiFirst && i < len(s) {
+			if c := s[i]; c < utf8.RuneSelf && c != lower && c != upper {
+				i++
+				continue
+			}
+		}
 		if n, ok := prefixCaseInsensitiveMatchLen(s[i:], substr); ok {
 			return i, n
 		}
@@ -1329,6 +1345,13 @@ func suffixCaseInsensitiveMatchLen(s, suffix string) (int, bool) {
 func lowerASCII(c byte) byte {
 	if 'A' <= c && c <= 'Z' {
 		return c + 'a' - 'A'
+	}
+	return c
+}
+
+func upperASCII(c byte) byte {
+	if 'a' <= c && c <= 'z' {
+		return c - 'a' + 'A'
 	}
 	return c
 }
