@@ -623,14 +623,13 @@ func stringMatcherFromRegexpInternal(re *syntax.Regexp) StringMatcher {
 				suffixCaseSensitive: matchesCaseSensitive,
 			}
 
-		// We found literals in the middle. We can trigger the fast path only if
-		// the matches are case sensitive because containsStringMatcher doesn't
-		// support case insensitive.
-		case matchesCaseSensitive:
+		// We found literals in the middle.
+		default:
 			return &containsStringMatcher{
-				substrings: matches,
-				left:       left,
-				right:      right,
+				substrings:      matches,
+				left:            left,
+				right:           right,
+				caseInsensitive: !matchesCaseSensitive,
 			}
 		}
 	}
@@ -684,6 +683,10 @@ type containsStringMatcher struct {
 
 	// The matcher that must match the right side. Can be nil.
 	right StringMatcher
+
+	// caseInsensitive matches the substrings under Unicode simple case folding, like the regexp
+	// engine's (?i).
+	caseInsensitive bool
 }
 
 func (m *containsStringMatcher) Matches(s string) bool {
@@ -693,7 +696,7 @@ func (m *containsStringMatcher) Matches(s string) bool {
 			searchStartPos := 0
 
 			for {
-				pos := strings.Index(s[searchStartPos:], substr)
+				pos, n := m.index(s[searchStartPos:], substr)
 				if pos < 0 {
 					break
 				}
@@ -704,25 +707,60 @@ func (m *containsStringMatcher) Matches(s string) bool {
 
 				// If both the left and right matchers match, then we can stop searching because
 				// we've found a match.
-				if m.left.Matches(s[:pos]) && m.right.Matches(s[pos+len(substr):]) {
+				if m.left.Matches(s[:pos]) && m.right.Matches(s[pos+n:]) {
 					return true
 				}
 
 				// Continue searching for another occurrence of the substring inside the text.
-				searchStartPos = pos + 1
+				_, size := utf8.DecodeRuneInString(s[pos:])
+				searchStartPos = pos + size
 			}
 		case m.left != nil:
 			// If we have to check for characters on the left then we need to match a suffix.
-			if strings.HasSuffix(s, substr) && m.left.Matches(s[:len(s)-len(substr)]) {
+			if n, ok := m.suffixLen(s, substr); ok && m.left.Matches(s[:len(s)-n]) {
 				return true
 			}
 		case m.right != nil:
-			if strings.HasPrefix(s, substr) && m.right.Matches(s[len(substr):]) {
+			if n, ok := m.prefixLen(s, substr); ok && m.right.Matches(s[n:]) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// index returns the position of the first match of substr in s and the match's length in s, which
+// differs from len(substr) when case folding changes a rune's encoded length. It returns -1 if
+// there is no match.
+func (m *containsStringMatcher) index(s, substr string) (int, int) {
+	if !m.caseInsensitive {
+		return strings.Index(s, substr), len(substr)
+	}
+	for i := 0; i <= len(s); {
+		if n, ok := prefixCaseInsensitiveMatchLen(s[i:], substr); ok {
+			return i, n
+		}
+		if i == len(s) {
+			break
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	return -1, 0
+}
+
+func (m *containsStringMatcher) prefixLen(s, prefix string) (int, bool) {
+	if m.caseInsensitive {
+		return prefixCaseInsensitiveMatchLen(s, prefix)
+	}
+	return len(prefix), strings.HasPrefix(s, prefix)
+}
+
+func (m *containsStringMatcher) suffixLen(s, suffix string) (int, bool) {
+	if m.caseInsensitive {
+		return suffixCaseInsensitiveMatchLen(s, suffix)
+	}
+	return len(suffix), strings.HasSuffix(s, suffix)
 }
 
 func newLiteralPrefixStringMatcher(prefix string, prefixCaseSensitive bool, right StringMatcher) StringMatcher {

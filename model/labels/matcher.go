@@ -86,15 +86,7 @@ func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
 			for parsed.Op == syntax.OpCapture {
 				parsed = parsed.Sub[0]
 			}
-			wholeValue := parsed.Op == syntax.OpConcat && len(parsed.Sub) >= 2 &&
-				parsed.Sub[0].Op == syntax.OpBeginText && parsed.Sub[len(parsed.Sub)-1].Op == syntax.OpEndText
-			// Explicit whole-value anchors retain set-match optimizations; empty regexes retain equality semantics.
-			if !wholeValue {
-				pattern = ".*(?:" + v + ").*"
-				if trimmed, ok := trimOuterStars(parsed); ok {
-					pattern = ".*(?:" + trimmed.String() + ").*"
-				}
-			}
+			pattern = unanchoredPattern(parsed)
 		}
 		re, err := NewFastRegexMatcher(pattern)
 		if err != nil {
@@ -105,34 +97,56 @@ func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
 	return m, nil
 }
 
-// trimOuterStars drops the starred elements at either end of re. Inside the unanchored `.*(?:…).*`
-// wrapper they can always match empty, so dropping them keeps the meaning and lets
-// NewFastRegexMatcher find literal matches instead of backtracking through a nested `.*`.
-func trimOuterStars(re *syntax.Regexp) (*syntax.Regexp, bool) {
-	if re.Op == syntax.OpStar {
-		return &syntax.Regexp{Op: syntax.OpEmptyMatch}, true
+// unanchoredPattern returns a pattern for NewFastRegexMatcher, which anchors at both ends, that
+// matches wherever re matches inside a value. An explicit ^ or $ at an end of re anchors that end;
+// it is removed rather than kept inside the pattern, where it would disable the string matchers.
+func unanchoredPattern(re *syntax.Regexp) string {
+	body := []*syntax.Regexp{re}
+	if re.Op == syntax.OpConcat {
+		body = re.Sub
 	}
-	if re.Op != syntax.OpConcat {
-		return re, false
+	startAnchored := len(body) > 0 && body[0].Op == syntax.OpBeginText
+	if startAnchored {
+		body = body[1:]
 	}
-	subs := re.Sub
-	for len(subs) > 0 && subs[0].Op == syntax.OpStar {
-		subs = subs[1:]
+	endAnchored := len(body) > 0 && body[len(body)-1].Op == syntax.OpEndText
+	if endAnchored {
+		body = body[:len(body)-1]
 	}
-	for len(subs) > 0 && subs[len(subs)-1].Op == syntax.OpStar {
-		subs = subs[:len(subs)-1]
+	if !startAnchored {
+		for len(body) > 0 && body[0].Op == syntax.OpStar {
+			body = body[1:]
+		}
 	}
+	if !endAnchored {
+		for len(body) > 0 && body[len(body)-1].Op == syntax.OpStar {
+			body = body[:len(body)-1]
+		}
+	}
+
+	pattern := "(?:" + concat(re, body).String() + ")"
+	if !startAnchored {
+		pattern = ".*" + pattern
+	}
+	if !endAnchored {
+		pattern += ".*"
+	}
+	return pattern
+}
+
+// concat rebuilds subs as one expression with the flags of re. Starred elements dropped from an
+// unanchored end can always match empty inside the .* wrapper, so dropping them keeps the meaning.
+func concat(re *syntax.Regexp, subs []*syntax.Regexp) *syntax.Regexp {
 	switch len(subs) {
-	case len(re.Sub):
-		return re, false
 	case 0:
-		return &syntax.Regexp{Op: syntax.OpEmptyMatch}, true
+		return &syntax.Regexp{Op: syntax.OpEmptyMatch}
 	case 1:
-		return subs[0], true
+		return subs[0]
 	}
-	trimmed := *re
-	trimmed.Sub = subs
-	return &trimmed, true
+	if re.Op == syntax.OpConcat && len(subs) == len(re.Sub) {
+		return re
+	}
+	return &syntax.Regexp{Op: syntax.OpConcat, Flags: re.Flags, Sub: subs}
 }
 
 // MustNewMatcher panics on error - only for use in tests!

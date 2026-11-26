@@ -16,7 +16,11 @@ package labels
 import (
 	"fmt"
 	"math/rand"
+	"slices"
+	"strconv"
 	"testing"
+
+	"github.com/grafana/regexp"
 
 	"github.com/stretchr/testify/require"
 )
@@ -493,6 +497,64 @@ func TestMatcherUnanchored(t *testing.T) {
 	}
 }
 
+func TestMatcherUnanchoredAgreesWithRegexpSearch(t *testing.T) {
+	testValues := append([]string{}, values...)
+	testValues = append(testValues, generateRandomValues()...)
+	for _, r := range append(slices.Clone(regexes), unanchoredRegexes...) {
+		if r == "" {
+			continue
+		}
+		search := regexp.MustCompile("(?s:" + r + ")")
+		for _, mt := range []MatchType{MatchRegexp, MatchNotRegexp} {
+			m := MustNewMatcher(mt, "k", r)
+			for _, v := range testValues {
+				require.Equalf(t, search.MatchString(v) == (mt == MatchRegexp), m.Matches(v), "%s on %q", m, v)
+			}
+		}
+	}
+}
+
+var unanchoredRegexes = []string{
+	"^foo.*",
+	"^foo",
+	"foo$",
+	".*foo$",
+	"^foo.*bar$",
+	"^(foo|bar)",
+	"(foo|bar)$",
+	"^(?i)foo",
+	"(?i)^foo.*",
+	"(?i)foo$",
+	"(?i)foo|bar",
+	"(?i).*(foo|bar).*",
+	".*(?i:sk).*",
+	"(?i)k",
+	"(?i)s-.*",
+	"(?i)ſ",
+	`(?i)\x{212a}`,
+	"(?i)foo.+bar",
+	"^$",
+	"^",
+	"$",
+	"^.*$",
+}
+
+func TestMatcherFastPathsForAnchorsAndCaseInsensitiveSubstrings(t *testing.T) {
+	for _, r := range []string{
+		"^remove_connector.*",
+		"^remove_connector",
+		"remove_connector$",
+		"^remove_(connector|metric_recorder)_id_from_.*",
+		"(?i)^remove_connector.*",
+		"(?i)app-1717|app-4242",
+		"(?i)shadow-.*",
+		"(?i)remove_(connector|metric_recorder)_id_from_",
+	} {
+		m := MustNewMatcher(MatchRegexp, "k", r)
+		require.NotNilf(t, m.re.stringMatcher, "%s runs through the regex engine", r)
+	}
+}
+
 func TestMatcherUnanchoredMetadata(t *testing.T) {
 	for _, mt := range []MatchType{MatchRegexp, MatchNotRegexp} {
 		m := MustNewMatcher(mt, "service_name", "frontend|cartservice")
@@ -503,5 +565,23 @@ func TestMatcherUnanchoredMetadata(t *testing.T) {
 		require.NotEqual(t, m.Matches("frontendproxy"), inverse.Matches("frontendproxy"))
 		anchored := MustNewMatcher(mt, "service_name", "^(frontend|cartservice)$")
 		require.ElementsMatch(t, []string{"frontend", "cartservice"}, anchored.SetMatches())
+	}
+}
+
+func BenchmarkMatcherUnanchoredPatterns(b *testing.B) {
+	values := make([]string, 5000)
+	for i := range values {
+		values[i] = "remove_connector_id_from_dash0.spans.red_" + strconv.Itoa(i)
+	}
+	for _, pattern := range []string{
+		"^(a|b)$", "app-1717|app-4242", "shadow-.*", "^remove_connector.*", "red_42$",
+		"(?i)^(a|b)$", "(?i)app-1717|app-4242", "(?i)shadow-.*", "(?i)^remove_connector.*", "(?i)red_42$",
+	} {
+		m := MustNewMatcher(MatchRegexp, "k", pattern)
+		b.Run(pattern, func(b *testing.B) {
+			for i := 0; b.Loop(); i++ {
+				m.Matches(values[i%len(values)])
+			}
+		})
 	}
 }
