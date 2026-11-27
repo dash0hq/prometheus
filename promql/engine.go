@@ -1976,14 +1976,13 @@ func (enh *EvalNodeHelper) resetHistograms(inVec Vector, arg parser.Expr) annota
 			continue
 		}
 
-		upperBound, err := strconv.ParseFloat(
-			sample.Metric.Get(model.BucketLabel), 64,
-		)
-		if err != nil {
+		bucketLabel := sample.Metric.Get(model.BucketLabel)
+		upperBound, err := strconv.ParseFloat(bucketLabel, 64)
+		if err != nil || math.IsNaN(upperBound) {
 			if enh.enableDelayedNameRemoval {
-				annos.Add(annotations.NewBadBucketLabelWarning(sample.Metric.Get(labels.MetricName), sample.Metric.Get(model.BucketLabel), arg.PositionRange()))
+				annos.Add(annotations.NewBadBucketLabelWarning(sample.Metric.Get(labels.MetricName), bucketLabel, arg.PositionRange()))
 			} else {
-				annos.Add(annotations.NewBadBucketLabelWarning("", sample.Metric.Get(model.BucketLabel), arg.PositionRange()))
+				annos.Add(annotations.NewBadBucketLabelWarning("", bucketLabel, arg.PositionRange()))
 			}
 			continue
 		}
@@ -5142,11 +5141,16 @@ func (*evaluator) nextValues(ts int64, series *Series) (f float64, h *histogram.
 }
 
 // handleAggregationError adds the appropriate annotation based on the aggregation error.
+// It panics if the error is not recognised.
 func handleAggregationError(err error, e *parser.AggregateExpr, metricName string, annos *annotations.Annotations) {
 	pos := e.Expr.PositionRange()
 	if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 		annos.Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, pos))
+		return
 	}
+	// Any other error means a histogram has an invalid bucket layout.
+	// Fail the query rather than silently drop the result.
+	panic(err)
 }
 
 // handleVectorBinopError returns the appropriate annotation based on the vector binary operation error.
@@ -5163,7 +5167,9 @@ func handleVectorBinopError(err error, e *parser.BinaryExpr) annotations.Annotat
 		pos := e.PositionRange()
 		return annotations.New().Add(annotations.NewIncompatibleBucketLayoutInBinOpWarning(op, pos))
 	}
-	return nil
+	// Any other error means a histogram has an invalid bucket layout.
+	// Fail the query rather than silently drop the result.
+	panic(err)
 }
 
 // generateGroupingKey builds and returns the grouping key for the given metric and
@@ -5482,7 +5488,11 @@ func detectHistogramStatsDecoding(expr parser.Expr) {
 
 			case *parser.Call:
 				switch p.Func.Name {
-				case "histogram_count", "histogram_sum", "histogram_avg":
+				case "histogram_count", "histogram_sum", "histogram_avg", "timestamp", "start_timestamp", "absent":
+					// These functions only need the count and sum
+					// of a histogram (histogram_count, histogram_sum,
+					// histogram_avg), or do not look at sample values
+					// at all (timestamp, start_timestamp, absent).
 					// We allow skipping buckets preliminarily. But
 					// we will continue through the path to see if
 					// we find a subquery (or a histogram function)
@@ -5495,11 +5505,32 @@ func detectHistogramStatsDecoding(expr parser.Expr) {
 					// buckets.
 					n.SkipHistogramBuckets = false
 					break pathLoop
+				case "changes":
+					// Detecting a change compares whole
+					// histograms, including their buckets.
+					n.SkipHistogramBuckets = false
+					break pathLoop
+				}
+
+			case *parser.AggregateExpr:
+				if p.Op == parser.COUNT_VALUES {
+					// The value label is the string
+					// representation of the whole histogram,
+					// including its buckets.
+					n.SkipHistogramBuckets = false
+					break pathLoop
 				}
 
 			case *parser.BinaryExpr:
-				if p.Op == parser.TRIM_UPPER || p.Op == parser.TRIM_LOWER {
+				switch p.Op {
+				case parser.TRIM_UPPER, parser.TRIM_LOWER:
 					// Trimming depends on buckets, we will not skip them.
+					n.SkipHistogramBuckets = false
+					break pathLoop
+				case parser.EQLC, parser.NEQ:
+					// Comparing histograms for (in)equality
+					// takes the buckets into account, we will
+					// not skip them.
 					n.SkipHistogramBuckets = false
 					break pathLoop
 				}
